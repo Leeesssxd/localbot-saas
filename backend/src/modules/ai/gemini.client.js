@@ -6,13 +6,13 @@ import env from '../../config/env.js';
 import logger from '../../shared/logger.js';
 import { AITimeoutError, AIProviderError } from '../../shared/errors.js';
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-
 export async function geminiComplete(messages) {
   if (!env.ai.geminiApiKey) {
     throw new AIProviderError('Gemini API key not configured');
   }
 
+  const model = env.ai.geminiModel;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), env.ai.groqTimeoutMs);
 
@@ -26,7 +26,7 @@ export async function geminiComplete(messages) {
     }));
 
   try {
-    const response = await fetch(`${GEMINI_URL}?key=${env.ai.geminiApiKey}`, {
+    const response = await fetch(`${geminiUrl}?key=${env.ai.geminiApiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -50,7 +50,7 @@ export async function geminiComplete(messages) {
 
     if (!text) throw new AIProviderError('Empty response from Gemini');
 
-    logger.debug({ model: 'gemini-1.5-flash' }, 'Gemini fallback request completed');
+    logger.debug({ model }, 'Gemini fallback request completed');
     return text.trim();
 
   } catch (err) {

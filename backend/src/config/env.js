@@ -34,6 +34,7 @@ const env = {
     groqModel: optional('GROQ_MODEL', 'llama-3.1-8b-instant'),
     groqTimeoutMs: parseInt(optional('GROQ_TIMEOUT_MS', '10000'), 10),
     geminiApiKey: optional('GEMINI_API_KEY', ''),
+    geminiModel: optional('GEMINI_MODEL', 'gemini-3.1-flash-lite'),
   },
 
   meta: {

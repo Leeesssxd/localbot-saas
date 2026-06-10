@@ -61,6 +61,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     if (tenant.status === 'SUSPENDED' || tenant.status === 'CANCELLED') {
       logger.info(ctx, `Tenant ${tenant.status} — sending suspension message`);
       await sendWhatsAppMessage(tenant, fromPhone, tenant.suspendedMessage);
+      await persistConversationTurn(tenantId, fromPhone, text, tenant.suspendedMessage);
       await updateLog(logRecord.id, 'PROCESSED');
       return;
     }
@@ -69,6 +70,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     if (!tenant.businessOpen) {
       logger.info(ctx, 'Business closed — sending closure message');
       await sendWhatsAppMessage(tenant, fromPhone, tenant.closureMessage);
+      await persistConversationTurn(tenantId, fromPhone, text, tenant.closureMessage);
       await updateLog(logRecord.id, 'PROCESSED');
       return;
     }
@@ -103,6 +105,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       logger.error({ ...ctx, err: aiErr.message }, 'AI provider error — sending fallback');
       const fallback = 'Nuestro asistente no está disponible en este momento. Por favor llámanos directamente.';
       await sendWhatsAppMessage(tenant, fromPhone, fallback);
+      await persistConversationTurn(tenantId, fromPhone, text, fallback);
       await updateLog(logRecord.id, 'PROCESSED');
       return;
     }
@@ -131,12 +134,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     }
 
     // ── Step 11: Persist conversation history ─────────────────────────────────
-    await prisma.conversationHistory.createMany({
-      data: [
-        { tenantId, customerPhone: fromPhone, role: 'user', content: text },
-        { tenantId, customerPhone: fromPhone, role: 'assistant', content: replyText },
-      ],
-    });
+    await persistConversationTurn(tenantId, fromPhone, text, replyText);
 
     // Log outbound message
     await prisma.webhookLog.create({
@@ -220,5 +218,14 @@ async function updateLog(id, status, errorMsg) {
   await prisma.webhookLog.update({
     where: { id },
     data: { status, ...(errorMsg && { errorMsg }) },
+  });
+}
+
+async function persistConversationTurn(tenantId, customerPhone, userContent, assistantContent) {
+  await prisma.conversationHistory.createMany({
+    data: [
+      { tenantId, customerPhone, role: 'user', content: userContent },
+      { tenantId, customerPhone, role: 'assistant', content: assistantContent },
+    ],
   });
 }

@@ -8,7 +8,7 @@ WhatsApp AI appointment bot for local businesses. SaaS platform — businesses a
 |-------|------|
 | Backend | Node.js 20 + Fastify 4 + Prisma 5 |
 | Database | PostgreSQL (Supabase free tier recommended) |
-| AI | Groq (primary) · Gemini Flash fallback |
+| AI | Gemini Flash Lite (preferred) · Groq fallback |
 | Frontend | React 18 + Vite + Tailwind CSS + FullCalendar |
 | Deploy | Backend → Render · Frontend → Vercel |
 
@@ -19,7 +19,7 @@ WhatsApp AI appointment bot for local businesses. SaaS platform — businesses a
 ### Prerequisites
 - Node.js 20+
 - A PostgreSQL database (Supabase free tier: https://supabase.com)
-- A Groq API key (recommended primary model: https://console.groq.com)
+- A Gemini API key from Google AI Studio, and optionally a Groq API key for fallback
 
 ### 1. Clone and install
 
@@ -33,7 +33,7 @@ cd localbot
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env — fill in DATABASE_URL, JWT secrets, GROQ_API_KEY
+# Edit .env — fill in DATABASE_URL, JWT secrets, GEMINI_API_KEY
 npm install
 
 # Generate Prisma client
@@ -135,8 +135,10 @@ Login credentials (from seed):
 
 ### AI Provider Recommendation
 
-- `AI_PROVIDER=groq` is the recommended default for the MVP because it is fast, cheap, and already fits the structured booking flow.
-- `AI_PROVIDER=gemini` is available as a fallback if Groq is unavailable or you want to compare outputs.
+- `AI_PROVIDER=gemini` is the recommended choice for the bot right now if you want the cheapest Gemini path with good quality.
+- `GEMINI_MODEL=gemini-3.1-flash-lite` is the default low-cost model.
+- `GEMINI_MODEL=gemini-3.5-flash` is the better-quality option if you want stronger responses.
+- If you leave `AI_PROVIDER` unset and `GEMINI_API_KEY` is present, the backend now prefers Gemini automatically.
 - The assistant prompt is designed to behave like a manager/receptionist: answer questions, book appointments, or hand off to a human when needed.
 
 ---

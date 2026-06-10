@@ -1,12 +1,21 @@
 // modules/ai/ai.client.js
 // Abstract interface for AI providers.
-// Switching from Groq to Gemini is a one-line env var change: AI_PROVIDER=gemini
+// Prefer Gemini automatically when its key is configured; fall back to Groq when needed.
 // WebhookService only ever imports getAIClient() from here — it has zero knowledge of Groq/Gemini.
 
 import env from '../../config/env.js';
 import { groqComplete } from './groq.client.js';
 import { geminiComplete } from './gemini.client.js';
 import logger from '../../shared/logger.js';
+
+function resolveProvider() {
+  const configured = (env.ai.provider ?? '').toLowerCase();
+
+  if (configured === 'gemini' || configured === 'groq') return configured;
+  if (env.ai.geminiApiKey) return 'gemini';
+  if (env.ai.groqApiKey) return 'groq';
+  return 'gemini';
+}
 
 function buildClient(provider) {
   switch (provider) {
@@ -38,9 +47,9 @@ function buildClient(provider) {
   }
 }
 
-const client = buildClient(env.ai.provider);
+const client = buildClient(resolveProvider());
 
-logger.info({ provider: env.ai.provider }, 'AI client initialized');
+logger.info({ provider: resolveProvider() }, 'AI client initialized');
 
 export function getAIClient() {
   return client;
