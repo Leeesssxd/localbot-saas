@@ -75,7 +75,7 @@ export default function Login() {
               <p className="mt-2 text-sm text-slate-300">Usa tus credenciales de administrador para entrar al dashboard.</p>
             </div>
 
-            <div className="login-form-card">
+            <div className="login-form-card tech-card tech-card--soft">
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -131,7 +131,7 @@ export default function Login() {
 
 function Feature({ icon: Icon, title, text }) {
   return (
-    <div className="login-feature">
+    <div className="login-feature tech-card tech-card--subtle">
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white">
         <Icon className="h-4 w-4" />
       </div>

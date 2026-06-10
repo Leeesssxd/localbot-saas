@@ -136,7 +136,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <section className="app-card overflow-hidden">
-        <div className="soft-grid relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-slate-50 via-white to-emerald-50 px-6 py-7 text-slate-950 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 dark:text-white sm:px-8">
+        <div className="config-hero relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-slate-50 via-white to-emerald-50 px-6 py-7 text-slate-950 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 dark:text-white sm:px-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.10),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.08),transparent_28%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.22),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.16),transparent_28%)]" />
           <div className="relative grid gap-6 lg:grid-cols-[1.4fr_0.9fr] lg:items-end">
             <div>
@@ -144,10 +144,10 @@ export default function Dashboard() {
                 <SparkIcon className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
                 Panel operativo en tiempo real
               </div>
-              <h2 className="mt-4 max-w-2xl text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+              <h2 className="mt-4 max-w-2xl font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 {greet()}{tenant?.businessName ? `, ${tenant.businessName}` : ''}. Todo listo para atender, agendar y responder.
               </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700 dark:text-slate-200/90">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-100/90 dark:text-slate-200/90">
                 Este panel combina la visión ejecutiva de la segunda propuesta con la capa de métricas y actividad del tercer diseño, pero conectado a tus datos reales de citas.
               </p>
 
@@ -394,7 +394,7 @@ function MetricCard({ icon: Icon, label, value, hint, tone }) {
   };
 
   return (
-    <div className={`app-card bg-gradient-to-br ${toneMap[tone] ?? toneMap.slate} px-5 py-5`}>
+    <div className={`app-card tech-card ${toneMap[tone] ?? toneMap.slate} px-5 py-5`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">{label}</p>
@@ -411,7 +411,7 @@ function MetricCard({ icon: Icon, label, value, hint, tone }) {
 
 function MiniMetric({ label, value, hint }) {
   return (
-    <div className="rounded-3xl border border-white/15 bg-white/85 px-4 py-4 text-slate-900 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-100">
+    <div className="tech-card tech-card--soft rounded-3xl border border-white/15 bg-white/85 px-4 py-4 text-slate-900 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-100">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{label}</p>
       <p className="mt-2 text-3xl font-bold text-slate-950 dark:text-slate-50">{value}</p>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{hint}</p>
@@ -421,7 +421,7 @@ function MiniMetric({ label, value, hint }) {
 
 function KeyValue({ label, value, valueClass = 'text-slate-950' }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
+    <div className="tech-card tech-card--subtle flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
       <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
       <span className={`text-sm font-semibold ${valueClass}`}>{value}</span>
     </div>

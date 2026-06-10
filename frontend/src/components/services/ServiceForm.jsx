@@ -44,7 +44,7 @@ export default function ServiceForm({ initial, onSubmit, onCancel }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900">
+    <form onSubmit={handleSubmit} className="tech-card rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm dark:bg-slate-950 dark:text-emerald-300">
           <SparkIcon className="h-4 w-4" />

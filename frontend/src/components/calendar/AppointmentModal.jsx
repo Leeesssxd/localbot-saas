@@ -32,7 +32,7 @@ export default function AppointmentModal({ appointment, onClose, onUpdate }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <button type="button" className="absolute inset-0 bg-slate-950/50" onClick={onClose} aria-label="Cerrar modal" />
-      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
+      <div className="tech-card relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-400 dark:text-slate-500">Detalle de cita</p>
@@ -102,7 +102,7 @@ export default function AppointmentModal({ appointment, onClose, onUpdate }) {
 
 function InfoTile({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+    <div className="tech-card tech-card--subtle rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
         <Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
         {label}

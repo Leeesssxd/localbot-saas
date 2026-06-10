@@ -84,7 +84,7 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <section className="app-card overflow-hidden">
-        <div className="soft-grid rounded-3xl bg-gradient-to-r from-slate-950 to-emerald-950 px-6 py-6 text-white sm:px-8">
+        <div className="config-hero rounded-3xl bg-gradient-to-r from-slate-950 to-emerald-950 px-6 py-6 text-white sm:px-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
@@ -98,7 +98,7 @@ export default function Settings() {
             </div>
 
             {tenant && (
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-950/50">
+              <div className="tech-card rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-950/50">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60 dark:text-slate-400">Tenant</p>
                 <p className="mt-1 text-sm font-semibold text-white dark:text-slate-100">{tenant.id}</p>
               </div>
@@ -138,7 +138,7 @@ export default function Settings() {
           <Section title="Horario de atención" description="Define cuándo puede responder el bot.">
             <div className="space-y-3">
               {schedule.map((day, idx) => (
-                <div key={day.dayOfWeek} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+                <div key={day.dayOfWeek} className="tech-card tech-card--subtle rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-3">
                       <span className="w-24 shrink-0 text-sm font-semibold text-slate-900 dark:text-slate-100">{DAY_NAMES[day.dayOfWeek]}</span>
@@ -178,7 +178,7 @@ export default function Settings() {
             <div className="space-y-4">
               <InfoRow label="Estado" value={tenant?.status ?? 'Sin datos'} />
               <CopyField label="URL del webhook" value={webhookUrl} onCopy={copyWebhook} copied={copied} />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="tech-card tech-card--subtle rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Token de verificación</p>
                 <p className="mt-1 font-mono text-xs text-slate-700 dark:text-slate-300">{tenant?.webhookVerifyToken ?? '—'}</p>
               </div>
@@ -199,7 +199,7 @@ export default function Settings() {
               <InfoRow label="Bot" value={tenant?.businessOpen ? 'Activo' : 'Pausado'} />
               <InfoRow label="ID" value={<span className="font-mono text-xs text-slate-500 dark:text-slate-400">{tenant?.id ?? '—'}</span>} />
             </div>
-            <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+            <div className="tech-card rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm dark:bg-slate-950 dark:text-emerald-300">
                   <ShieldIcon className="h-4 w-4" />
@@ -243,7 +243,7 @@ function Field({ label, hint, children }) {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
+    <div className="tech-card tech-card--subtle flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
       <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
       <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">{value}</span>
     </div>

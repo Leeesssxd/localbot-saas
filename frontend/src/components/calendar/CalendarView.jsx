@@ -27,15 +27,15 @@ export default function CalendarView({ appointments, onEventClick, onDateSelect 
   }));
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950">
+    <div className="calendar-surface overflow-hidden rounded-3xl border border-slate-200 shadow-sm dark:border-slate-700">
+      <div className="calendar-surface__header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-6 dark:border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-200 shadow-sm">
             <CalendarIcon className="h-4 w-4" />
           </div>
           <div>
             <p className="text-sm font-bold text-slate-950 dark:text-slate-50">Vista de calendario</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Agenda semanal, diaria y selección rápida de horarios</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300">Agenda semanal, diaria y selección rápida de horarios</p>
           </div>
         </div>
 
@@ -43,7 +43,7 @@ export default function CalendarView({ appointments, onEventClick, onDateSelect 
           <button
             type="button"
             onClick={() => calendarRef.current?.getApi()?.prev()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
             aria-label="Anterior"
           >
             <ChevronLeftIcon className="h-4 w-4" />
@@ -51,7 +51,7 @@ export default function CalendarView({ appointments, onEventClick, onDateSelect 
           <button
             type="button"
             onClick={() => calendarRef.current?.getApi()?.today()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
             <ClockIcon className="h-4 w-4" />
             Hoy
@@ -59,7 +59,7 @@ export default function CalendarView({ appointments, onEventClick, onDateSelect 
           <button
             type="button"
             onClick={() => calendarRef.current?.getApi()?.next()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:border-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
             aria-label="Siguiente"
           >
             <ChevronRightIcon className="h-4 w-4" />
@@ -67,7 +67,7 @@ export default function CalendarView({ appointments, onEventClick, onDateSelect 
         </div>
       </div>
 
-      <div className="p-4 sm:p-6">
+      <div className="calendar-surface__body p-4 sm:p-6">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

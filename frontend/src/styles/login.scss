@@ -22,7 +22,7 @@
     radial-gradient(circle at 26% 34%, rgba(34, 197, 94, 0.18), transparent 0 3px, transparent 4px),
     radial-gradient(circle at 33% 18%, rgba(34, 197, 94, 0.16), transparent 0 2px, transparent 3px),
     radial-gradient(circle at 20% 42%, rgba(34, 197, 94, 0.12), transparent 0 2px, transparent 3px),
-    linear-gradient(135deg, #020617 0%, #0b1324 44%, #041f1d 72%, #07240f 100%);
+    linear-gradient(135deg, #020617 0%, #07101f 48%, #07161d 72%, #07240f 100%);
   box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42);
 }
 
@@ -43,10 +43,10 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 14% 18%, rgba(34, 197, 94, 0.28), transparent 0 22%, transparent 28%),
-    radial-gradient(circle at 88% 20%, rgba(14, 165, 233, 0.14), transparent 0 18%, transparent 25%),
-    radial-gradient(circle at 72% 78%, rgba(16, 185, 129, 0.1), transparent 0 15%, transparent 22%);
-  opacity: 0.85;
+    radial-gradient(circle at 14% 18%, rgba(34, 197, 94, 0.24), transparent 0 22%, transparent 28%),
+    radial-gradient(circle at 88% 20%, rgba(14, 165, 233, 0.12), transparent 0 18%, transparent 25%),
+    radial-gradient(circle at 72% 78%, rgba(16, 185, 129, 0.08), transparent 0 15%, transparent 22%);
+  opacity: 0.8;
   pointer-events: none;
 }
 
@@ -78,8 +78,7 @@
   align-items: center;
   justify-content: center;
   padding: 2.5rem 1.5rem;
-  background: rgba(2, 6, 23, 0.28);
-  backdrop-filter: blur(10px);
+  background: transparent;
 }
 
 .login-form-card {
@@ -96,6 +95,24 @@
   background: rgba(255, 255, 255, 0.08);
   padding: 1rem;
   backdrop-filter: blur(10px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-surface::before,
+  .login-surface::after,
+  .login-orbs {
+    animation: login-drift 18s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes login-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(0, -8px, 0) scale(1.01);
+  }
 }
 
 @media (min-width: 1024px) {

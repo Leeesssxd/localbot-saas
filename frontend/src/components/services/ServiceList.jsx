@@ -14,7 +14,7 @@ export default function ServiceList({ services, onUpdate, onDelete }) {
 
   if (services.length === 0) {
     return (
-      <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
+      <div className="tech-card tech-card--subtle rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm dark:bg-slate-950 dark:text-emerald-300">
           <SparkIcon className="h-5 w-5" />
         </div>
@@ -26,7 +26,7 @@ export default function ServiceList({ services, onUpdate, onDelete }) {
 
   return (
     <>
-      <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="tech-card overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
             <tr>

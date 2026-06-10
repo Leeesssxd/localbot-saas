@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Messages from './pages/Messages.jsx';
 import Services from './pages/Services.jsx';
 import Settings from './pages/Settings.jsx';
 import AppShell from './components/layout/AppShell.jsx';
@@ -28,6 +29,7 @@ export default function App() {
 
         <Route path="/dashboard" element={<PrivatePage><Dashboard /></PrivatePage>} />
         <Route path="/calendar"  element={<PrivatePage><Calendar /></PrivatePage>} />
+        <Route path="/messages"  element={<PrivatePage><Messages /></PrivatePage>} />
         <Route path="/services"  element={<PrivatePage><Services /></PrivatePage>} />
         <Route path="/settings"  element={<PrivatePage><Settings /></PrivatePage>} />
 

@@ -52,7 +52,7 @@ export default function Calendar() {
   return (
     <div className="space-y-6">
       <section className="app-card overflow-hidden">
-        <div className="soft-grid rounded-3xl bg-gradient-to-r from-slate-950 to-emerald-950 px-6 py-6 text-white sm:px-8 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950">
+        <div className="config-hero rounded-3xl bg-gradient-to-r from-slate-950 to-emerald-950 px-6 py-6 text-white sm:px-8 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
@@ -151,7 +151,7 @@ function StatCard({ label, value, icon: Icon, tone }) {
   };
 
   return (
-    <div className="app-card px-5 py-5">
+    <div className="app-card tech-card px-5 py-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">{label}</p>
@@ -167,7 +167,7 @@ function StatCard({ label, value, icon: Icon, tone }) {
 
 function Field({ label, children }) {
   return (
-    <div>
+    <div className="tech-card tech-card--subtle">
       <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</label>
       {children}
     </div>

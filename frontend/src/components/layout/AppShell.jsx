@@ -25,7 +25,8 @@ import {
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Inicio', icon: SparkIcon },
   { to: '/calendar', label: 'Agenda', icon: CalendarIcon },
-  { to: '/services', label: 'Servicios', icon: MessagesIcon },
+  { to: '/messages', label: 'Mensajes', icon: MessagesIcon },
+  { to: '/services', label: 'Servicios', icon: UsersIcon },
   { to: '/settings', label: 'Configuración', icon: GearIcon },
 ];
 
@@ -84,8 +85,9 @@ export default function AppShell({ children }) {
   }, [theme]);
 
   const currentPage = useMemo(() => {
-    if (location.pathname.startsWith('/calendar')) return 'Agenda';
-    if (location.pathname.startsWith('/services')) return 'Servicios';
+  if (location.pathname.startsWith('/calendar')) return 'Agenda';
+  if (location.pathname.startsWith('/messages')) return 'Mensajes';
+  if (location.pathname.startsWith('/services')) return 'Servicios';
     if (location.pathname.startsWith('/settings')) return 'Configuración';
     return 'Inicio';
   }, [location.pathname]);
