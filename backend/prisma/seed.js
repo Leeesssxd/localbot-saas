@@ -9,7 +9,7 @@ import crypto from 'crypto';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding development database...');
+  console.log('Seeding development database...');
 
   const trialStart = new Date();
   const trialEnd = new Date(trialStart);
@@ -42,7 +42,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ Tenant created: ${tenant.businessName} (id: ${tenant.id})`);
+  console.log(`Tenant created: ${tenant.businessName} (id: ${tenant.id})`);
 
   // Owner user: admin@localbot.dev / password: admin123
   const passwordHash = await bcrypt.hash('admin123', 12);
@@ -62,7 +62,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ User created: ${user.email} (password: admin123)`);
+  console.log(`User created: ${user.email} (password: admin123)`);
 
   // Default services
   const services = [
@@ -78,7 +78,7 @@ async function main() {
     });
   }
 
-  console.log(`✅ ${services.length} services created`);
+  console.log(`${services.length} services created`);
 
   // Weekly schedule: Mon–Sat 9:00–19:00, Sun closed
   const schedule = [
@@ -103,7 +103,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Weekly schedule created (Mon–Sat open, Sun closed)');
+  console.log('Weekly schedule created (Mon–Sat open, Sun closed)');
   console.log('\n─────────────────────────────────────────');
   console.log(`Tenant ID:  ${tenant.id}`);
   console.log(`Login:      admin@localbot.dev / admin123`);

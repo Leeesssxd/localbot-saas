@@ -30,7 +30,7 @@ CREATE TABLE "tenants" (
     "trial_start" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "trial_end" TIMESTAMP(3) NOT NULL,
     "business_open" BOOLEAN NOT NULL DEFAULT true,
-    "closure_message" TEXT NOT NULL DEFAULT 'Hola, en este momento no estamos atendiendo. Te contactaremos pronto. 🙏',
+    "closure_message" TEXT NOT NULL DEFAULT 'Hola, en este momento no estamos atendiendo. Te contactaremos pronto.',
     "suspended_message" TEXT NOT NULL DEFAULT 'Esta cuenta está temporalmente inactiva. Contacta directamente al negocio.',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,

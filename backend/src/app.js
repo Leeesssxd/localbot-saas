@@ -82,7 +82,7 @@ async function start() {
 
     // Verify DB connection on startup
     await prisma.$connect();
-    logger.info('✅ Database connected');
+    logger.info('Database connected');
 
   } catch (err) {
     logger.error({ err: err.message }, 'Failed to start server');

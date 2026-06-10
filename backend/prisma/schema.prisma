@@ -71,7 +71,7 @@ model Tenant {
 
   // Bot behavior
   businessOpen      Boolean      @default(true) @map("business_open")
-  closureMessage    String       @default("Hola, en este momento no estamos atendiendo. Te contactaremos pronto. 🙏") @map("closure_message")
+  closureMessage    String       @default("Hola, en este momento no estamos atendiendo. Te contactaremos pronto.") @map("closure_message")
   suspendedMessage  String       @default("Esta cuenta está temporalmente inactiva. Contacta directamente al negocio.") @map("suspended_message")
 
   createdAt         DateTime     @default(now()) @map("created_at")

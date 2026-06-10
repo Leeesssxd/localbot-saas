@@ -8,9 +8,9 @@ WhatsApp AI appointment bot for local businesses. SaaS platform — businesses a
 |-------|------|
 | Backend | Node.js 20 + Fastify 4 + Prisma 5 |
 | Database | PostgreSQL (Supabase free tier recommended) |
-| AI | Groq (llama-3.1-8b-instant) · Gemini Flash fallback |
+| AI | Groq (primary) · Gemini Flash fallback |
 | Frontend | React 18 + Vite + Tailwind CSS + FullCalendar |
-| Deploy | Backend → Railway · Frontend → Vercel |
+| Deploy | Backend → Render · Frontend → Vercel |
 
 ---
 
@@ -19,7 +19,7 @@ WhatsApp AI appointment bot for local businesses. SaaS platform — businesses a
 ### Prerequisites
 - Node.js 20+
 - A PostgreSQL database (Supabase free tier: https://supabase.com)
-- A Groq API key (free: https://console.groq.com)
+- A Groq API key (recommended primary model: https://console.groq.com)
 
 ### 1. Clone and install
 
@@ -73,19 +73,21 @@ Login credentials (from seed):
 
 ## Deployment
 
-### Backend → Railway
+### Backend → Render
 
-1. Create a new Railway project
-2. Add PostgreSQL plugin (or use Supabase)
-3. Set environment variables (copy from `.env.example`)
-4. Connect GitHub repo — Railway detects `Dockerfile` automatically
-5. After first deploy, run the EXCLUDE constraint SQL in your database
+1. Create a new Render Web Service
+2. Select `Docker` as the runtime
+3. Set root directory to `backend`
+4. Set Dockerfile path to `backend/Dockerfile`
+5. Add environment variables (copy from `.env.example`)
+6. Point `DATABASE_URL` to your Supabase Session pooler URI
+7. After first deploy, run the EXCLUDE constraint SQL in your database
 
 ### Frontend → Vercel
 
 1. Import GitHub repo in Vercel
 2. Set root directory to `frontend`
-3. Set `VITE_API_URL` environment variable to your Railway backend URL
+3. Set `VITE_API_URL` environment variable to your Render backend URL
 4. Deploy
 
 ---
@@ -130,6 +132,12 @@ Login credentials (from seed):
 4. Copy Phone Number ID and generate a permanent token
 5. Update tenant in DB: `phoneNumberId`, `waAccessToken`
 6. Add `META_APP_SECRET` to backend env (from your Meta App settings)
+
+### AI Provider Recommendation
+
+- `AI_PROVIDER=groq` is the recommended default for the MVP because it is fast, cheap, and already fits the structured booking flow.
+- `AI_PROVIDER=gemini` is available as a fallback if Groq is unavailable or you want to compare outputs.
+- The assistant prompt is designed to behave like a manager/receptionist: answer questions, book appointments, or hand off to a human when needed.
 
 ---
 

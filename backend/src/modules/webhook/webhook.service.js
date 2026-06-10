@@ -101,7 +101,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       aiResponse = await aiClient.complete(messages);
     } catch (aiErr) {
       logger.error({ ...ctx, err: aiErr.message }, 'AI provider error — sending fallback');
-      const fallback = 'Nuestro asistente no está disponible en este momento. Por favor llámanos directamente. 📞';
+      const fallback = 'Nuestro asistente no está disponible en este momento. Por favor llámanos directamente.';
       await sendWhatsAppMessage(tenant, fromPhone, fallback);
       await updateLog(logRecord.id, 'PROCESSED');
       return;
@@ -117,6 +117,9 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       if (parsed?.intent === 'BOOK') {
         bookingHandled = true;
         replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone);
+      } else if (parsed?.intent === 'HANDOFF') {
+        bookingHandled = true;
+        replyText = await handleHandoffIntent(ctx, tenant, parsed, fromPhone);
       }
     } catch {
       // Not JSON — treat as conversational reply (normal path)
@@ -179,11 +182,11 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone) {
     });
 
     const confirmation =
-      `✅ *¡Cita confirmada!*\n\n` +
-      `📋 Servicio: ${service?.name}\n` +
-      `📅 Fecha: ${dateStr}\n` +
-      `👤 Nombre: ${customer_name ?? 'Cliente'}\n\n` +
-      `Te esperamos en ${tenant.businessName}. ¡Hasta pronto! 💈`;
+      `Cita confirmada.\n\n` +
+      `Servicio: ${service?.name}\n` +
+      `Fecha: ${dateStr}\n` +
+      `Nombre: ${customer_name ?? 'Cliente'}\n\n` +
+      `Te esperamos en ${tenant.businessName}.`;
 
     await sendWhatsAppMessage(tenant, fromPhone, confirmation);
     return confirmation;
@@ -192,15 +195,25 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone) {
     logger.warn({ ...ctx, err: err.message }, 'Booking failed');
 
     if (err.name === 'SlotUnavailableError') {
-      const unavailMsg = '⚠️ Lo sentimos, ese horario ya no está disponible. ¿Te gustaría elegir otro horario?';
+      const unavailMsg = 'Lo sentimos, ese horario ya no está disponible. ¿Te gustaría elegir otro horario?';
       await sendWhatsAppMessage(tenant, fromPhone, unavailMsg);
       return unavailMsg;
     }
 
-    const errMsg = 'Hubo un problema al agendar tu cita. Por favor llámanos directamente. 📞';
+    const errMsg = 'Hubo un problema al agendar tu cita. Por favor llámanos directamente.';
     await sendWhatsAppMessage(tenant, fromPhone, errMsg);
     return errMsg;
   }
+}
+
+async function handleHandoffIntent(ctx, tenant, parsed, fromPhone) {
+  const message = typeof parsed?.message === 'string' && parsed.message.trim()
+    ? parsed.message.trim()
+    : 'En este momento voy a escalar tu solicitud con una persona del negocio para darle seguimiento.';
+
+  await sendWhatsAppMessage(tenant, fromPhone, message);
+  logger.info({ ...ctx, message }, 'Handoff response sent');
+  return message;
 }
 
 async function updateLog(id, status, errorMsg) {

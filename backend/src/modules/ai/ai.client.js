@@ -11,10 +11,30 @@ import logger from '../../shared/logger.js';
 function buildClient(provider) {
   switch (provider) {
     case 'gemini':
-      return { complete: geminiComplete };
+      return {
+        async complete(messages) {
+          try {
+            return await geminiComplete(messages);
+          } catch (err) {
+            if (!env.ai.groqApiKey) throw err;
+            logger.warn({ err: err.message }, 'Gemini failed, falling back to Groq');
+            return groqComplete(messages);
+          }
+        },
+      };
     case 'groq':
     default:
-      return { complete: groqComplete };
+      return {
+        async complete(messages) {
+          try {
+            return await groqComplete(messages);
+          } catch (err) {
+            if (!env.ai.geminiApiKey) throw err;
+            logger.warn({ err: err.message }, 'Groq failed, falling back to Gemini');
+            return geminiComplete(messages);
+          }
+        },
+      };
   }
 }
 
