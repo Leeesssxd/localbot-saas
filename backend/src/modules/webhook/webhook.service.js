@@ -12,6 +12,7 @@ import { bookAppointment } from '../appointments/appointments.service.js';
 import { getAvailableSlots } from '../appointments/schedule.service.js';
 
 const HISTORY_PAIRS = 4; // last 4 turns = 8 messages
+const AVAILABILITY_DAYS = 3;
 
 export async function processInboundMessage(tenantId, payload, metaAppSecret) {
   // ── Step 3: Extract message data ──────────────────────────────────────────
@@ -91,10 +92,15 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       where: { tenantId, active: true },
     });
 
-    const today = new Date();
-    const slots = await getAvailableSlots(tenantId, today);
+    const availability = await buildAvailabilityWindow(tenantId, tenant, AVAILABILITY_DAYS);
 
-    const messages = buildPrompt({ tenant, services, slots, history, userMessage: text });
+    const messages = buildPrompt({
+      tenant,
+      services,
+      availability,
+      history,
+      userMessage: text,
+    });
 
     // ── Step 7: Call AI provider ──────────────────────────────────────────────
     const aiClient = getAIClient();
@@ -119,7 +125,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       const parsed = JSON.parse(aiResponse);
       if (parsed?.intent === 'BOOK') {
         bookingHandled = true;
-        replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone);
+        replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone, text);
       } else if (parsed?.intent === 'HANDOFF') {
         bookingHandled = true;
         replyText = await handleHandoffIntent(ctx, tenant, parsed, fromPhone);
@@ -157,14 +163,20 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
 }
 
 // ── Booking intent handler ─────────────────────────────────────────────────
-async function handleBookingIntent(ctx, tenant, parsed, fromPhone) {
-  const { service_id, slot, customer_name } = parsed;
+async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) {
+  const { service_id, slot, scheduled_date, customer_name } = parsed;
+  const bookingDate = resolveBookingDate({
+    scheduledDate: scheduled_date,
+    userMessage,
+    timezone: tenant.timezone,
+  });
 
   try {
     const appointment = await bookAppointment({
       tenantId: tenant.id,
       serviceId: service_id,
       slot,
+      scheduledDate: bookingDate,
       customerPhone: fromPhone,
       customerName: customer_name ?? 'Cliente',
     });
@@ -227,5 +239,51 @@ async function persistConversationTurn(tenantId, customerPhone, userContent, ass
       { tenantId, customerPhone, role: 'user', content: userContent },
       { tenantId, customerPhone, role: 'assistant', content: assistantContent },
     ],
+  });
+}
+
+async function buildAvailabilityWindow(tenantId, tenant, daysCount) {
+  const window = [];
+
+  for (let offset = 0; offset < daysCount; offset += 1) {
+    const date = addDays(new Date(), offset);
+    const slots = await getAvailableSlots(tenantId, date);
+    window.push({
+      date: toIsoDate(date),
+      label: toHumanDate(date, tenant.timezone),
+      slots,
+    });
+  }
+
+  return window;
+}
+
+function resolveBookingDate({ scheduledDate, userMessage, timezone }) {
+  if (typeof scheduledDate === 'string' && scheduledDate.trim()) {
+    return scheduledDate.trim();
+  }
+
+  const text = (userMessage ?? '').toLowerCase();
+  if (text.includes('mañana')) return toIsoDate(addDays(new Date(), 1));
+  if (text.includes('pasado mañana')) return toIsoDate(addDays(new Date(), 2));
+  return toIsoDate(new Date());
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toIsoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function toHumanDate(date, timezone) {
+  return date.toLocaleDateString('es-MX', {
+    timeZone: timezone ?? 'America/Mexico_City',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
   });
 }

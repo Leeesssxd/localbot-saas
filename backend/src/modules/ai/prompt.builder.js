@@ -8,12 +8,12 @@
  * @param {object} params
  * @param {object} params.tenant       – Tenant record from DB
  * @param {Array}  params.services     – Active services for this tenant
- * @param {Array}  params.slots        – Available slots (strings: "09:00", "09:30", ...)
+ * @param {Array}  params.availability  – Array of {date, label, slots}
  * @param {Array}  params.history      – [{role, content}] last N turns
  * @param {string} params.userMessage  – The current inbound message text
  * @returns {Array} messages array [{role, content}]
  */
-export function buildPrompt({ tenant, services, slots, history, userMessage }) {
+export function buildPrompt({ tenant, services, availability, history, userMessage }) {
   const now = new Date();
   const dateTimeStr = now.toLocaleString('es-MX', {
     timeZone: tenant.timezone ?? 'America/Mexico_City',
@@ -31,9 +31,12 @@ export function buildPrompt({ tenant, services, slots, history, userMessage }) {
       ).join('\n')
     : 'No hay servicios configurados actualmente.';
 
-  const slotsText = slots.length > 0
-    ? slots.join(', ')
-    : 'No hay horarios disponibles hoy.';
+  const availabilityText = availability.length > 0
+    ? availability.map((day) => {
+        const slotsText = day.slots.length > 0 ? day.slots.join(', ') : 'sin horarios';
+        return `- ${day.label} (${day.date}): ${slotsText}`;
+      }).join('\n')
+    : 'No hay horarios disponibles en los próximos días.';
 
   const systemPrompt = `Eres el asistente virtual y manager operativo de ${tenant.businessName}, un ${tenant.businessType} ubicado en ${tenant.city}, México.
 
@@ -53,15 +56,19 @@ Tono:
 SERVICIOS DISPONIBLES:
 ${servicesText}
 
-HORARIOS DISPONIBLES HOY (${dateTimeStr}):
-${slotsText}
+DISPONIBILIDAD DE AGENDA EN LOS PRÓXIMOS DÍAS:
+${availabilityText}
+
+FECHA Y HORA ACTUAL DEL NEGOCIO:
+${dateTimeStr}
 
 REGLAS IMPORTANTES:
 1. Solo ofrece los horarios que aparecen arriba. NUNCA inventes horarios.
 2. Si el cliente quiere agendar una cita, responde ÚNICAMENTE con este JSON exacto:
-   {"intent":"BOOK","service_id":"ID_DEL_SERVICIO","slot":"HH:MM","customer_name":"NOMBRE_DEL_CLIENTE"}
+   {"intent":"BOOK","service_id":"ID_DEL_SERVICIO","scheduled_date":"YYYY-MM-DD","slot":"HH:MM","customer_name":"NOMBRE_DEL_CLIENTE"}
    Donde:
    - service_id es el ID exacto del servicio (no el nombre)
+   - scheduled_date es la fecha exacta en formato YYYY-MM-DD
    - slot es la hora en formato HH:MM (ejemplo: "10:30")
    - customer_name es el nombre que el cliente te proporcionó
 3. Si el cliente quiere hablar con una persona, si pide algo que no puedes resolver, o si necesitas escalar el caso, responde ÚNICAMENTE con este JSON exacto:
@@ -72,6 +79,7 @@ REGLAS IMPORTANTES:
 7. Si la pregunta es ambigua, haz una sola pregunta de aclaración.
 8. Si el usuario ya dio nombre, servicio y horario, no hagas preguntas extra: devuelve BOOK.
 9. Si el usuario pide una persona, no expliques nada: devuelve HANDOFF.
+10. Si el usuario pide una fecha concreta como "mañana", usa scheduled_date para esa fecha; no respondas solo con horarios de hoy.
 
 IDs de los servicios disponibles:
 ${services.map((s) => `- "${s.name}" → ID: ${s.id}`).join('\n')}`;

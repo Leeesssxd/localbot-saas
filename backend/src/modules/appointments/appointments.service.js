@@ -10,7 +10,7 @@ import logger from '../../shared/logger.js';
  * Books an appointment.
  * Handles the SlotUnavailableError from PostgreSQL's EXCLUDE constraint.
  */
-export async function bookAppointment({ tenantId, serviceId, slot, customerPhone, customerName }) {
+export async function bookAppointment({ tenantId, serviceId, slot, scheduledDate, customerPhone, customerName }) {
   // Validate service belongs to this tenant and is active
   const service = await prisma.service.findFirst({
     where: { id: serviceId, tenantId, active: true },
@@ -20,8 +20,9 @@ export async function bookAppointment({ tenantId, serviceId, slot, customerPhone
     throw new NotFoundError('Service');
   }
 
-  // Parse slot (HH:MM) into today's date
-  const now = new Date();
+  // Parse slot (HH:MM) into the requested date, defaulting to today
+  const baseDate = scheduledDate ? new Date(`${scheduledDate}T00:00:00`) : new Date();
+  const now = new Date(baseDate);
   const [hours, minutes] = slot.split(':').map(Number);
   const scheduledAt = new Date(now);
   scheduledAt.setHours(hours, minutes, 0, 0);
