@@ -8,10 +8,10 @@ import { extractMessageData } from './webhook.validator.js';
 import { getAIClient } from '../ai/ai.client.js';
 import { buildPrompt } from '../ai/prompt.builder.js';
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.client.js';
-import { bookAppointment } from '../appointments/appointments.service.js';
+import { bookAppointment, updateAppointmentStatus } from '../appointments/appointments.service.js';
 import { getAvailableSlots } from '../appointments/schedule.service.js';
 
-const HISTORY_PAIRS = 4; // last 4 turns = 8 messages
+const HISTORY_PAIRS = 10; // last 10 turns = 20 messages
 const AVAILABILITY_DAYS = 3;
 
 export async function processInboundMessage(tenantId, payload, metaAppSecret) {
@@ -71,6 +71,24 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     // We only use businessOpen as context for future features/analytics.
     if (!tenant.businessOpen) {
       logger.info(ctx, 'Business marked closed — continuing normal AI flow');
+    }
+
+    const cancellationIntent = isCancellationRequest(text);
+    if (cancellationIntent) {
+      const cancellationReply = await handleCancellationIntent(ctx, tenant, fromPhone, text);
+      await persistConversationTurn(tenantId, fromPhone, text, cancellationReply);
+      await prisma.webhookLog.create({
+        data: {
+          tenantId,
+          direction: 'OUT',
+          toPhone: fromPhone,
+          content: cancellationReply,
+          status: 'PROCESSED',
+        },
+      });
+      await updateLog(logRecord.id, 'PROCESSED');
+      logger.info(ctx, 'Cancellation processed successfully');
+      return;
     }
 
     // ── Step 5: Load conversation history ────────────────────────────────────
@@ -224,6 +242,44 @@ async function handleHandoffIntent(ctx, tenant, parsed, fromPhone) {
   return message;
 }
 
+async function handleCancellationIntent(ctx, tenant, fromPhone, userMessage) {
+  const futureAppointments = await prisma.appointment.findMany({
+    where: {
+      tenantId: tenant.id,
+      customerPhone: fromPhone,
+      status: { in: ['CONFIRMED', 'PENDING'] },
+      scheduledAt: { gte: new Date() },
+    },
+    include: { service: true },
+    orderBy: { scheduledAt: 'asc' },
+  });
+
+  if (futureAppointments.length === 0) {
+    const noAppointmentMsg = 'No encuentro una cita próxima para cancelar. Si gustas, dime la fecha y hora para revisar cuál quieres mover o cancelar.';
+    await sendWhatsAppMessage(tenant, fromPhone, noAppointmentMsg);
+    return noAppointmentMsg;
+  }
+
+  const requestedMatch = pickMatchingAppointment(futureAppointments, userMessage, tenant.timezone);
+  const appointment = requestedMatch ?? futureAppointments[0];
+
+  await updateAppointmentStatus(tenant.id, appointment.id, 'CANCELLED', 'Cancelada por WhatsApp');
+
+  const dateStr = new Date(appointment.scheduledAt).toLocaleString('es-MX', {
+    timeZone: tenant.timezone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const reply = `Listo, tu cita de ${appointment.service?.name ?? 'servicio'} para ${dateStr} quedó cancelada. Si quieres, te ayudo a agendar otra después.`;
+  await sendWhatsAppMessage(tenant, fromPhone, reply);
+  logger.info({ ...ctx, appointmentId: appointment.id }, 'Appointment cancelled');
+  return reply;
+}
+
 async function updateLog(id, status, errorMsg) {
   await prisma.webhookLog.update({
     where: { id },
@@ -340,4 +396,58 @@ function getTimeZoneOffsetMs(date, timeZone) {
   );
 
   return asUtc - date.getTime();
+}
+
+function pickMatchingAppointment(appointments, userMessage, timeZone) {
+  const text = (userMessage ?? '').toLowerCase();
+  const requestedDate = extractRequestedDate(text, timeZone);
+  const requestedTime = extractRequestedTime(text);
+
+  return appointments.find((appointment) => {
+    const appointmentDate = getLocalDateString(new Date(appointment.scheduledAt), timeZone);
+    if (requestedDate && appointmentDate !== requestedDate) return false;
+
+    if (!requestedTime) return true;
+    const appointmentTime = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(new Date(appointment.scheduledAt));
+    return appointmentTime === requestedTime;
+  });
+}
+
+function extractRequestedDate(text, timeZone) {
+  const normalized = (text ?? '').toLowerCase();
+  if (normalized.includes('pasado mañana')) return addDaysToDateString(getLocalDateString(new Date(), timeZone), 2);
+  if (normalized.includes('mañana')) return addDaysToDateString(getLocalDateString(new Date(), timeZone), 1);
+  if (normalized.includes('hoy')) return getLocalDateString(new Date(), timeZone);
+  return null;
+}
+
+function extractRequestedTime(text) {
+  const match = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/i);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const meridiem = (match[3] ?? '').toLowerCase();
+
+  if (meridiem.includes('p') && hours < 12) hours += 12;
+  if (meridiem.includes('a') && hours === 12) hours = 0;
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function isCancellationRequest(text) {
+  const normalized = (text ?? '').toLowerCase();
+  if (normalized.includes('no voy a poder')) return true;
+  if (normalized.includes('no podre')) return true;
+  if (normalized.includes('no podré')) return true;
+  if (normalized.includes('cancel')) return true;
+  if (normalized.includes('reagend')) return true;
+  if (normalized.includes('mover mi cita')) return true;
+  if (normalized.includes('cambiar mi cita')) return true;
+  return false;
 }
