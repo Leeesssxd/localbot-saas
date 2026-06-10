@@ -67,13 +67,10 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       return;
     }
 
-    // Business closed — send closure message
+    // The assistant keeps working even if the business is marked closed.
+    // We only use businessOpen as context for future features/analytics.
     if (!tenant.businessOpen) {
-      logger.info(ctx, 'Business closed — sending closure message');
-      await sendWhatsAppMessage(tenant, fromPhone, tenant.closureMessage);
-      await persistConversationTurn(tenantId, fromPhone, text, tenant.closureMessage);
-      await updateLog(logRecord.id, 'PROCESSED');
-      return;
+      logger.info(ctx, 'Business marked closed — continuing normal AI flow');
     }
 
     // ── Step 5: Load conversation history ────────────────────────────────────
@@ -109,7 +106,7 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       aiResponse = await aiClient.complete(messages);
     } catch (aiErr) {
       logger.error({ ...ctx, err: aiErr.message }, 'AI provider error — sending fallback');
-      const fallback = 'Nuestro asistente no está disponible en este momento. Por favor llámanos directamente.';
+      const fallback = 'Tu mensaje fue recibido. En breve te atiende una persona del local.';
       await sendWhatsAppMessage(tenant, fromPhone, fallback);
       await persistConversationTurn(tenantId, fromPhone, text, fallback);
       await updateLog(logRecord.id, 'PROCESSED');
@@ -210,7 +207,7 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) 
       return unavailMsg;
     }
 
-    const errMsg = 'Hubo un problema al agendar tu cita. Por favor llámanos directamente.';
+    const errMsg = 'Hubo un problema al agendar tu cita. ¿Quieres que te proponga otro horario disponible?';
     await sendWhatsAppMessage(tenant, fromPhone, errMsg);
     return errMsg;
   }
@@ -219,7 +216,7 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) 
 async function handleHandoffIntent(ctx, tenant, parsed, fromPhone) {
   const message = typeof parsed?.message === 'string' && parsed.message.trim()
     ? parsed.message.trim()
-    : 'En este momento voy a escalar tu solicitud con una persona del negocio para darle seguimiento.';
+    : 'En este momento voy a pasar tu solicitud con una persona del negocio para darle seguimiento.';
 
   await sendWhatsAppMessage(tenant, fromPhone, message);
   logger.info({ ...ctx, message }, 'Handoff response sent');
