@@ -176,6 +176,7 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) 
       scheduledDate: bookingDate,
       customerPhone: fromPhone,
       customerName: customer_name ?? 'Cliente',
+      timeZone: tenant.timezone,
     });
 
     const service = await prisma.service.findUnique({ where: { id: service_id } });
