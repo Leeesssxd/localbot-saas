@@ -9,12 +9,11 @@ import prisma from '../../shared/db.js';
  *
  * @param {string} tenantId
  * @param {Date}   date       – The date to check
+ * @param {string} [timeZone] – Tenant IANA timezone
  * @returns {string[]}        – Array of available slot times in "HH:MM" format
  */
-export async function getAvailableSlots(tenantId, date) {
-  // Get day of week (1=Mon, 7=Sun) — JS Sunday=0 needs remapping
-  const jsDay = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const dayOfWeek = jsDay === 0 ? 7 : jsDay;
+export async function getAvailableSlots(tenantId, date, timeZone = 'America/Mexico_City') {
+  const dayOfWeek = getDayOfWeekInTimeZone(date, timeZone);
 
   const template = await prisma.scheduleTemplate.findUnique({
     where: { tenantId_dayOfWeek: { tenantId, dayOfWeek } },
@@ -26,10 +25,7 @@ export async function getAvailableSlots(tenantId, date) {
   const allSlots = generateSlots(template.openTime, template.closeTime);
 
   // Find confirmed appointments for this date
-  const dayStart = new Date(date);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(date);
-  dayEnd.setHours(23, 59, 59, 999);
+  const { dayStart, dayEnd } = getUtcRangeForLocalDate(date, timeZone);
 
   const confirmed = await prisma.appointment.findMany({
     where: {
@@ -47,8 +43,8 @@ export async function getAvailableSlots(tenantId, date) {
     const slotEnd = slotStart + 30;
 
     return !confirmed.some((appt) => {
-      const apptStart = dateToMinutesInDay(new Date(appt.scheduledAt));
-      const apptEnd = dateToMinutesInDay(new Date(appt.endsAt));
+      const apptStart = dateToMinutesInDayInTimeZone(new Date(appt.scheduledAt), timeZone);
+      const apptEnd = dateToMinutesInDayInTimeZone(new Date(appt.endsAt), timeZone);
       // Overlapping: slot starts before appt ends AND slot ends after appt starts
       return slotStart < apptEnd && slotEnd > apptStart;
     });
@@ -81,6 +77,83 @@ function minutesToTimeString(minutes) {
   return `${h}:${m}`;
 }
 
-function dateToMinutesInDay(date) {
-  return date.getHours() * 60 + date.getMinutes();
+function dateToMinutesInDayInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
+function getDayOfWeekInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  }).formatToParts(date);
+
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Mon';
+  const map = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[weekday] ?? 1;
+}
+
+function getUtcRangeForLocalDate(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const localDateString = `${parts.year}-${parts.month}-${parts.day}`;
+  const start = buildZonedDate(localDateString, '00:00', timeZone);
+  const end = buildZonedDate(localDateString, '23:59', timeZone);
+
+  return { dayStart: start, dayEnd: end };
+}
+
+function buildZonedDate(dateString, timeString, timeZone) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+  const guessedDate = new Date(utcGuess);
+  const offset = getTimeZoneOffsetMs(guessedDate, timeZone);
+  return new Date(utcGuess - offset);
+}
+
+function getTimeZoneOffsetMs(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+
+  return asUtc - date.getTime();
 }

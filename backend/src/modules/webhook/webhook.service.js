@@ -242,12 +242,14 @@ async function persistConversationTurn(tenantId, customerPhone, userContent, ass
 
 async function buildAvailabilityWindow(tenantId, tenant, daysCount) {
   const window = [];
+  const todayLocal = getLocalDateString(new Date(), tenant.timezone ?? 'America/Mexico_City');
 
   for (let offset = 0; offset < daysCount; offset += 1) {
-    const date = addDays(new Date(), offset);
-    const slots = await getAvailableSlots(tenantId, date);
+    const dateString = addDaysToDateString(todayLocal, offset);
+    const date = buildDateFromLocalDateString(dateString, tenant.timezone ?? 'America/Mexico_City');
+    const slots = await getAvailableSlots(tenantId, date, tenant.timezone);
     window.push({
-      date: toIsoDate(date),
+      date: dateString,
       label: toHumanDate(date, tenant.timezone),
       slots,
     });
@@ -262,19 +264,16 @@ function resolveBookingDate({ scheduledDate, userMessage, timezone }) {
   }
 
   const text = (userMessage ?? '').toLowerCase();
-  if (text.includes('mañana')) return toIsoDate(addDays(new Date(), 1));
-  if (text.includes('pasado mañana')) return toIsoDate(addDays(new Date(), 2));
-  return toIsoDate(new Date());
+  const todayLocal = getLocalDateString(new Date(), timezone ?? 'America/Mexico_City');
+  if (text.includes('pasado mañana')) return addDaysToDateString(todayLocal, 2);
+  if (text.includes('mañana')) return addDaysToDateString(todayLocal, 1);
+  return todayLocal;
 }
 
 function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
-}
-
-function toIsoDate(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function toHumanDate(date, timezone) {
@@ -284,4 +283,61 @@ function toHumanDate(date, timezone) {
     day: 'numeric',
     month: 'long',
   });
+}
+
+function getLocalDateString(date, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timeZone ?? 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function addDaysToDateString(dateString, days) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const utc = Date.UTC(year, month - 1, day);
+  return new Date(utc + days * 86400000).toISOString().slice(0, 10);
+}
+
+function buildDateFromLocalDateString(dateString, timeZone) {
+  return buildZonedDate(dateString, '12:00', timeZone ?? 'America/Mexico_City');
+}
+
+function buildZonedDate(dateString, timeString, timeZone) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+  const guessedDate = new Date(utcGuess);
+  const offset = getTimeZoneOffsetMs(guessedDate, timeZone);
+  return new Date(utcGuess - offset);
+}
+
+function getTimeZoneOffsetMs(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+
+  return asUtc - date.getTime();
 }
