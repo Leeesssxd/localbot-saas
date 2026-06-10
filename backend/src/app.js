@@ -32,7 +32,23 @@ await fastify.register(helmet, {
 });
 
 await fastify.register(cors, {
-  origin: [env.frontendUrl],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+
+    const allowed = [
+      env.frontendUrl,
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ].filter(Boolean);
+
+    const isAllowed =
+      allowed.includes(origin) ||
+      /^https:\/\/.*\.vercel\.app$/.test(origin) ||
+      /^https:\/\/.*\.vercel\.sh$/.test(origin) ||
+      /^https:\/\/.*\.vercel\.com$/.test(origin);
+
+    cb(null, isAllowed);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 });

@@ -2,6 +2,17 @@
 
 import { login, refreshAccessToken, logout } from './auth.service.js';
 
+function cookieOptions(request) {
+  const secure = request.protocol === 'https';
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? 'none' : 'lax',
+    path: '/auth/refresh',
+    maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+  };
+}
+
 export async function handleLogin(request, reply) {
   const { email, password } = request.body;
 
@@ -12,13 +23,7 @@ export async function handleLogin(request, reply) {
   const result = await login(email, password);
 
   // Set refresh token as httpOnly cookie for security
-  reply.setCookie('refreshToken', result.refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/auth/refresh',
-    maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
-  });
+  reply.setCookie('refreshToken', result.refreshToken, cookieOptions(request));
 
   return reply.send({
     accessToken: result.accessToken,
@@ -35,13 +40,7 @@ export async function handleRefresh(request, reply) {
 
   const result = await refreshAccessToken(token);
 
-  reply.setCookie('refreshToken', result.refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/auth/refresh',
-    maxAge: 7 * 24 * 60 * 60,
-  });
+  reply.setCookie('refreshToken', result.refreshToken, cookieOptions(request));
 
   return reply.send({ accessToken: result.accessToken });
 }
