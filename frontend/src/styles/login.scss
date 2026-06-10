@@ -1,0 +1,113 @@
+.login-shell {
+  min-height: 100vh;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 24%),
+    linear-gradient(180deg, #020617 0%, #0f172a 100%);
+}
+
+.login-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  min-height: calc(100vh - 2rem);
+  max-width: 72rem;
+  margin: 0 auto;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 2rem;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(34, 197, 94, 0.2), transparent 0 4px, transparent 5px),
+    radial-gradient(circle at 26% 34%, rgba(34, 197, 94, 0.18), transparent 0 3px, transparent 4px),
+    radial-gradient(circle at 33% 18%, rgba(34, 197, 94, 0.16), transparent 0 2px, transparent 3px),
+    radial-gradient(circle at 20% 42%, rgba(34, 197, 94, 0.12), transparent 0 2px, transparent 3px),
+    linear-gradient(135deg, #020617 0%, #0b1324 44%, #041f1d 72%, #07240f 100%);
+  box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42);
+}
+
+.login-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.login-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(34, 197, 94, 0.28), transparent 0 22%, transparent 28%),
+    radial-gradient(circle at 88% 20%, rgba(14, 165, 233, 0.14), transparent 0 18%, transparent 25%),
+    radial-gradient(circle at 72% 78%, rgba(16, 185, 129, 0.1), transparent 0 15%, transparent 22%);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.login-orbs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 8% 18%, rgba(34, 197, 94, 0.22), transparent 0 18px, transparent 28px),
+    radial-gradient(circle at 14% 28%, rgba(34, 197, 94, 0.16), transparent 0 12px, transparent 20px),
+    radial-gradient(circle at 20% 12%, rgba(34, 197, 94, 0.12), transparent 0 8px, transparent 16px);
+  filter: blur(1px);
+  opacity: 0.9;
+}
+
+.login-hero,
+.login-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero {
+  padding: 2rem 1.5rem;
+  color: #fff;
+}
+
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  background: rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.login-form-card {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 1.75rem;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 1.5rem;
+  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.54);
+}
+
+.login-feature {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1rem;
+  backdrop-filter: blur(10px);
+}
+
+@media (min-width: 1024px) {
+  .login-surface {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+
+  .login-hero {
+    padding: 2.5rem 2.5rem 2.5rem 2.5rem;
+  }
+
+  .login-panel {
+    padding: 2.5rem 3rem;
+  }
+}

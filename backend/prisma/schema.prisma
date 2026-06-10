@@ -1,0 +1,224 @@
+// LocalBot — Prisma Schema
+// Database: PostgreSQL 15+
+// Strategy: Shared DB, shared schema, discriminated by tenant_id
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum WebhookStatus {
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum ConversationRole {
+  user
+  assistant
+}
+
+// ─── Tenants ──────────────────────────────────────────────
+// Root entity of the multi-tenant system. One record = one business client.
+
+model Tenant {
+  id                String       @id @default(cuid())
+  businessName      String       @map("business_name")
+  businessType      String       @default("barbershop") @map("business_type")
+  city              String       @default("Morelia")
+  timezone          String       @default("America/Mexico_City")
+
+  // WhatsApp configuration (per-tenant)
+  phoneNumberId     String       @unique @map("phone_number_id")
+  waAccessToken     String       @map("wa_access_token")        // store encrypted in prod
+  webhookVerifyToken String      @map("webhook_verify_token")
+
+  // Subscription management
+  status            TenantStatus @default(TRIAL)
+  trialStart        DateTime     @default(now()) @map("trial_start")
+  trialEnd          DateTime     @map("trial_end")               // set to trialStart + 30 days on create
+
+  // Bot behavior
+  businessOpen      Boolean      @default(true) @map("business_open")
+  closureMessage    String       @default("Hola, en este momento no estamos atendiendo. Te contactaremos pronto. 🙏") @map("closure_message")
+  suspendedMessage  String       @default("Esta cuenta está temporalmente inactiva. Contacta directamente al negocio.") @map("suspended_message")
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  users             User[]
+  services          Service[]
+  scheduleTemplates ScheduleTemplate[]
+  appointments      Appointment[]
+  conversationHistory ConversationHistory[]
+  webhookLogs       WebhookLog[]
+
+  @@map("tenants")
+}
+
+// ─── Users ────────────────────────────────────────────────
+// Admin panel credentials. One OWNER per tenant in MVP.
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// ─── Refresh Tokens ───────────────────────────────────────
+// Stored refresh tokens for secure rotation.
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─── Services ─────────────────────────────────────────────
+// Service catalog offered by the business. Used in prompts and booking.
+
+model Service {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String?
+  durationMin Int      @map("duration_min")  // minutes
+  price       Decimal  @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@map("services")
+}
+
+// ─── Schedule Templates ───────────────────────────────────
+// Weekly opening hours per day. Used to compute available slots.
+
+model ScheduleTemplate {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  dayOfWeek  Int      @map("day_of_week")  // 1=Monday, 7=Sunday
+  isOpen     Boolean  @default(true) @map("is_open")
+  openTime   String   @map("open_time")    // "09:00" — stored as HH:MM string
+  closeTime  String   @map("close_time")   // "18:00"
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dayOfWeek])
+  @@map("schedule_templates")
+}
+
+// ─── Appointments ─────────────────────────────────────────
+// Core business table. EXCLUDE constraint added via raw SQL migration.
+
+model Appointment {
+  id            String            @id @default(cuid())
+  tenantId      String            @map("tenant_id")
+  serviceId     String            @map("service_id")
+  customerPhone String            @map("customer_phone")
+  customerName  String            @map("customer_name")
+  scheduledAt   DateTime          @map("scheduled_at")  // TIMESTAMPTZ
+  endsAt        DateTime          @map("ends_at")        // TIMESTAMPTZ
+  status        AppointmentStatus @default(CONFIRMED)
+  notes         String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([tenantId, scheduledAt])
+  @@map("appointments")
+}
+
+// ─── Conversation History ─────────────────────────────────
+// Last N messages per customer per tenant — context window for AI.
+
+model ConversationHistory {
+  id            String           @id @default(cuid())
+  tenantId      String           @map("tenant_id")
+  customerPhone String           @map("customer_phone")
+  role          ConversationRole
+  content       String
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerPhone, createdAt(sort: Desc)])
+  @@map("conversation_history")
+}
+
+// ─── Webhook Logs ─────────────────────────────────────────
+// Deduplication + audit trail for all inbound/outbound WA messages.
+
+model WebhookLog {
+  id          String           @id @default(cuid())
+  tenantId    String           @map("tenant_id")
+  direction   MessageDirection
+  waMessageId String?          @map("wa_message_id")  // unique for IN messages
+  fromPhone   String?          @map("from_phone")
+  toPhone     String?          @map("to_phone")
+  content     String?
+  status      WebhookStatus    @default(PROCESSING)
+  errorMsg    String?          @map("error_msg")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([waMessageId, direction])
+  @@index([tenantId, createdAt])
+  @@map("webhook_logs")
+}
