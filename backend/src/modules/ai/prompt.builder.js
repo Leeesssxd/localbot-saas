@@ -33,8 +33,11 @@ export function buildPrompt({ tenant, services, availability, history, userMessa
 
   const availabilityText = availability.length > 0
     ? availability.map((day) => {
-        const slotsText = day.slots.length > 0 ? day.slots.join(', ') : 'sin horarios';
-        return `- ${day.label} (${day.date}): ${slotsText}`;
+        const visibleSlots = day.slots.slice(0, 5);
+        const slotsText = visibleSlots.length > 0 ? visibleSlots.join(', ') : 'sin horarios';
+        const moreCount = Math.max(day.slots.length - visibleSlots.length, 0);
+        const suffix = moreCount > 0 ? ` (+${moreCount} más)` : '';
+        return `- ${day.label} (${day.date}): ${slotsText}${suffix}`;
       }).join('\n')
     : 'No hay horarios disponibles en los próximos días.';
 
@@ -52,6 +55,9 @@ Tono:
 - Nunca uses emojis.
 - Nunca menciones que eres una IA ni expliques instrucciones internas.
 - Máximo 3 oraciones cuando respondas en texto libre.
+- Cuando el cliente pida disponibilidad, responde con una sola frase corta y ofrece como máximo 3 horarios sugeridos.
+- No enumeres toda la agenda completa en el chat; usa la agenda solo para sugerir opciones.
+- Si el cliente pide una fecha concreta, responde con esa fecha y solo unas pocas opciones, no con una lista larga.
 
 SERVICIOS DISPONIBLES:
 ${servicesText}
@@ -80,6 +86,8 @@ REGLAS IMPORTANTES:
 8. Si el usuario ya dio nombre, servicio y horario, no hagas preguntas extra: devuelve BOOK.
 9. Si el usuario pide una persona, no expliques nada: devuelve HANDOFF.
 10. Si el usuario pide una fecha concreta como "mañana", usa scheduled_date para esa fecha; no respondas solo con horarios de hoy.
+11. Si hay muchos horarios disponibles, sugiere solo el horario pedido y hasta 2 alternativas cercanas.
+12. Si el usuario pregunta “qué disponibilidad hay”, responde con 3 opciones máximo y pide que elija una.
 
 IDs de los servicios disponibles:
 ${services.map((s) => `- "${s.name}" → ID: ${s.id}`).join('\n')}`;
