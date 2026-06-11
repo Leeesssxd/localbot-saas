@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import client from '../api/client.js';
+import { notifyAppDataChanged } from '../lib/app-events.js';
 
 export function useAppointments() {
   const [appointments, setAppointments] = useState([]);
@@ -29,14 +30,23 @@ export function useAppointments() {
   const updateAppointment = useCallback(async (id, status, notes) => {
     const { data } = await client.patch(`/appointments/${id}`, { status, notes });
     setAppointments((prev) => prev.map((a) => (a.id === id ? data : a)));
+    notifyAppDataChanged({ type: 'appointment', action: 'update', id });
+    return data;
+  }, []);
+
+  const rescheduleAppointment = useCallback(async (id, scheduledAt, notes) => {
+    const { data } = await client.patch(`/appointments/${id}/reschedule`, { scheduledAt, notes });
+    setAppointments((prev) => prev.map((a) => (a.id === id ? data : a)));
+    notifyAppDataChanged({ type: 'appointment', action: 'reschedule', id });
     return data;
   }, []);
 
   const createAppointment = useCallback(async (payload) => {
     const { data } = await client.post('/appointments', payload);
     setAppointments((prev) => [...prev, data]);
+    notifyAppDataChanged({ type: 'appointment', action: 'create', id: data.id });
     return data;
   }, []);
 
-  return { appointments, loading, error, fetchAppointments, updateAppointment, createAppointment };
+  return { appointments, loading, error, fetchAppointments, updateAppointment, rescheduleAppointment, createAppointment };
 }

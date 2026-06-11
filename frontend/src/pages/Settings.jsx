@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTenantStore } from '../store/tenant.store.js';
-import client from '../api/client.js';
+import { useAppDataRefresh } from '../hooks/useAppDataRefresh.js';
+import { notifyAppDataChanged } from '../lib/app-events.js';
+import client, { getWebhookBaseUrl } from '../api/client.js';
 import { CopyIcon, GearIcon, ShieldIcon } from '../components/common/Icons.jsx';
 
 const DAY_NAMES = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -19,10 +21,23 @@ export default function Settings() {
     suspendedMessage: '',
   });
 
-  useEffect(() => {
+  const loadSchedule = useCallback(async () => {
+    try {
+      const { data } = await client.get('/tenants/me/schedule');
+      setSchedule(data);
+    } catch {}
+  }, []);
+
+  const refreshSettings = useCallback(() => {
     fetchTenant();
     loadSchedule();
-  }, [fetchTenant]);
+  }, [fetchTenant, loadSchedule]);
+
+  useEffect(() => {
+    refreshSettings();
+  }, [refreshSettings]);
+
+  useAppDataRefresh(refreshSettings);
 
   useEffect(() => {
     if (tenant) {
@@ -33,13 +48,6 @@ export default function Settings() {
       });
     }
   }, [tenant]);
-
-  const loadSchedule = async () => {
-    try {
-      const { data } = await client.get('/tenants/me/schedule');
-      setSchedule(data);
-    } catch {}
-  };
 
   const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
@@ -67,13 +75,14 @@ export default function Settings() {
     setScheduleSaving(true);
     try {
       await client.put('/tenants/me/schedule', { days: schedule });
+      notifyAppDataChanged({ type: 'tenant', action: 'schedule-update' });
       flashSaved();
     } finally {
       setScheduleSaving(false);
     }
   };
 
-  const webhookUrl = tenant ? `${window.location.origin.replace('5173', '3000')}/webhook/${tenant.id}` : '';
+  const webhookUrl = tenant ? `${getWebhookBaseUrl()}/webhook/${tenant.id}` : '';
 
   const copyWebhook = async () => {
     await navigator.clipboard.writeText(webhookUrl);

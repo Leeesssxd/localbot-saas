@@ -17,6 +17,9 @@ import authRoutes from './modules/auth/auth.routes.js';
 import tenantsRoutes from './modules/tenants/tenants.routes.js';
 import servicesRoutes from './modules/services/services.routes.js';
 import appointmentsRoutes from './modules/appointments/appointments.routes.js';
+import conversationsRoutes from './modules/conversations/conversations.routes.js';
+import analyticsRoutes from './modules/analytics/analytics.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 
 import { startSuspendExpiredJob } from './jobs/suspend-expired.js';
 
@@ -85,25 +88,47 @@ await fastify.register(authRoutes);
 await fastify.register(tenantsRoutes);
 await fastify.register(servicesRoutes);
 await fastify.register(appointmentsRoutes);
+await fastify.register(conversationsRoutes);
+await fastify.register(analyticsRoutes);
+await fastify.register(searchRoutes);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 async function start() {
   try {
-    await fastify.listen({ port: env.port, host: '0.0.0.0' });
-    logger.info({ port: env.port, env: env.nodeEnv }, '🚀 LocalBot backend running');
-
-    // Start cron jobs
-    startSuspendExpiredJob();
-
     // Verify DB connection on startup
     await prisma.$connect();
     logger.info('Database connected');
 
+    await fastify.listen({ port: env.port, host: '0.0.0.0' });
+    logger.info({ port: env.port, env: env.nodeEnv }, '🚀 LocalBot backend running');
+
+    // Start cron jobs only after the app is actually ready.
+    startSuspendExpiredJob();
+
   } catch (err) {
-    logger.error({ err: err.message }, 'Failed to start server');
+    logger.error({
+      err: err.message,
+      diagnosis: diagnoseStartupError(err),
+    }, 'Failed to start server');
+    await fastify.close().catch(() => {});
+    await prisma.$disconnect().catch(() => {});
     process.exit(1);
   }
+}
+
+function diagnoseStartupError(err) {
+  const message = String(err?.message ?? '');
+  if (/authentication failed/i.test(message)) {
+    return 'DATABASE_URL credentials are invalid. Recheck the Supabase password/user and ensure you are using the current connection string.';
+  }
+  if (/can't reach database server/i.test(message) || /ECONNREFUSED|ETIMEDOUT/i.test(message)) {
+    return 'The database host is unreachable. Confirm the Supabase host, port, network access, and that the project is online.';
+  }
+  if (/Missing required environment variable/i.test(message)) {
+    return 'A required environment variable is missing. Check backend/.env against .env.example.';
+  }
+  return 'Check backend/.env and the remote database connection.';
 }
 
 // Graceful shutdown

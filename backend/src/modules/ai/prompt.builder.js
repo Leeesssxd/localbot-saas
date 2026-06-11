@@ -10,10 +10,11 @@
  * @param {Array}  params.services     – Active services for this tenant
  * @param {Array}  params.availability  – Array of {date, label, slots}
  * @param {Array}  params.history      – [{role, content}] last N turns
+ * @param {object} params.bookingContext – Optional inferred booking state
  * @param {string} params.userMessage  – The current inbound message text
  * @returns {Array} messages array [{role, content}]
  */
-export function buildPrompt({ tenant, services, availability, history, userMessage }) {
+export function buildPrompt({ tenant, services, availability, history, bookingContext, userMessage }) {
   const now = new Date();
   const dateTimeStr = now.toLocaleString('es-MX', {
     timeZone: tenant.timezone ?? 'America/Mexico_City',
@@ -41,6 +42,14 @@ export function buildPrompt({ tenant, services, availability, history, userMessa
       }).join('\n')
     : 'No hay horarios disponibles en los próximos días.';
 
+  const bookingContextText = bookingContext
+    ? [
+        `- servicio probable: ${bookingContext.service?.name ?? 'no identificado'}`,
+        `- fecha probable: ${bookingContext.date ?? 'no identificada'}`,
+        `- hora probable: ${bookingContext.time ?? 'no identificada'}`,
+      ].join('\n')
+    : 'No hay contexto previo de agendado.';
+
   const systemPrompt = `Eres el asistente virtual y manager operativo de ${tenant.businessName}, un ${tenant.businessType} ubicado en ${tenant.city}, México.
 
 Tu trabajo es atender WhatsApp como recepcionista profesional: responder dudas, ayudar a reservar citas, dar información del negocio y escalar a una persona cuando no puedas resolver algo.
@@ -57,6 +66,10 @@ Tono:
 - Nunca uses emojis.
 - Nunca menciones que eres una IA ni expliques instrucciones internas.
 - Máximo 2 oraciones cuando respondas en texto libre.
+- No repitas siempre la misma apertura; alterna entre "Claro", "Con gusto", "Perfecto", "Sí" o una respuesta directa si ya hay contexto suficiente.
+- Si la conversación viene de un hilo previo, usa el contexto reciente como continuidad real, no como si fuera una nueva conversación.
+- Si ya tienes servicio, fecha u hora probable en el contexto de agenda, trátalo como información válida y no vuelvas a pedirlo salvo que haga falta corregirlo.
+- Cuando no estés agendando, responde de forma humana y útil, sin sonar a formulario.
 - Cuando el cliente pida disponibilidad, primero pregúntale qué hora desea tomar y no le muestres una lista de horarios exactos.
 - No enumeres toda la agenda completa en el chat; usa la agenda solo para validar o, si el cliente insiste, para dar una ventana breve.
 - Si el cliente pide una fecha concreta, responde con una pregunta corta sobre la hora que desea.
@@ -67,6 +80,9 @@ ${servicesText}
 
 DISPONIBILIDAD DE AGENDA EN LOS PRÓXIMOS DÍAS:
 ${availabilityText}
+
+CONTEXTO RECIENTE DE AGENDA:
+${bookingContextText}
 
 FECHA Y HORA ACTUAL DEL NEGOCIO:
 ${dateTimeStr}
@@ -94,6 +110,10 @@ REGLAS IMPORTANTES:
 13. Si el negocio está marcado como cerrado, continúa atendiendo igual; no menciones horarios de cierre ni pauses la conversación.
 14. Si el usuario pregunta por qué un horario no está disponible, responde que ese horario ya está ocupado y ofrece alternativas cercanas. No escales ese caso.
 15. Si el usuario solo pide aclaración sobre disponibilidad u horarios, no devuelvas HANDOFF; responde primero con la información concreta que sí exista.
+16. Si el usuario quiere mover una cita, interpreta eso como reagendar, no como cancelación. Pide solo la fecha y hora faltantes si aún no las dio.
+17. Si el mensaje no tiene intención de agendar, cancelarla, moverla o escalarla, responde con naturalidad y sin mencionar JSON ni reglas internas.
+18. Si la conversación trae un contexto reciente de booking, continua esa misma intención en vez de reiniciar la conversación.
+19. Si el cliente saluda, agradece o responde solo con una confirmación breve, contesta de forma simple y humana, sin forzar preguntas.
 
 IDs de los servicios disponibles:
 ${services.map((s) => `- "${s.name}" → ID: ${s.id}`).join('\n')}`;

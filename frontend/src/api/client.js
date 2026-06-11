@@ -5,12 +5,33 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth.store.js';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
+function resolveApiBaseUrl() {
+  const explicit = import.meta.env.VITE_API_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, '');
+  }
+
+  return '/api';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const client = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true, // sends httpOnly cookie for refresh token
 });
+
+export function getWebhookBaseUrl() {
+  const explicit = import.meta.env.VITE_WEBHOOK_BASE_URL;
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  try {
+    const resolved = new URL(API_BASE_URL, window.location.origin);
+    return resolved.origin;
+  } catch {
+    return window.location.origin;
+  }
+}
 
 // Attach access token to every request
 client.interceptors.request.use((config) => {
@@ -53,7 +74,7 @@ client.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const res = await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
         const { accessToken } = res.data;
 
         useAuthStore.getState().setAccessToken(accessToken);

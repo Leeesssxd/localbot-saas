@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   addDays,
@@ -13,6 +13,9 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAppointments } from '../hooks/useAppointments.js';
+import { useAppDataRefresh } from '../hooks/useAppDataRefresh.js';
+import { useConversations } from '../hooks/useConversations.js';
+import { useAnalytics } from '../hooks/useAnalytics.js';
 import { useTenantStore } from '../store/tenant.store.js';
 import {
   ArrowRightIcon,
@@ -24,94 +27,72 @@ import {
   UsersIcon,
 } from '../components/common/Icons.jsx';
 
-const RECENT_CONVERSATIONS = [
-  {
-    name: 'Jorge Ramírez',
-    preview: 'Hola, ¿tienen espacio para hoy por la tarde?',
-    time: 'Hace 3 min',
-    status: 'Necesita atención',
-    tone: 'amber',
-    messages: [
-      { who: 'Jorge', text: 'Hola, ¿tienen espacio para hoy por la tarde?' },
-      { who: 'LocalBot', text: 'Sí, tengo espacio a las 4:00 p. m. y a las 5:30 p. m. ¿Cuál prefieres?' },
-      { who: 'Jorge', text: 'A las 4:00 me queda perfecto.' },
-      { who: 'LocalBot', text: 'Listo, te dejo agendado y te mando la confirmación.' },
-    ],
-  },
-  {
-    name: 'María González',
-    preview: 'Quedó confirmada mi cita para mañana.',
-    time: 'Hace 14 min',
-    status: 'Bot',
-    tone: 'emerald',
-    messages: [
-      { who: 'María', text: 'Quedó confirmada mi cita para mañana.' },
-      { who: 'LocalBot', text: 'Sí, quedó registrada para mañana a las 10:00 a. m.' },
-    ],
-  },
-  {
-    name: 'Lucía Paredes',
-    preview: '¿Puedo mover mi cita al jueves?',
-    time: 'Hace 38 min',
-    status: 'Revisión',
-    tone: 'sky',
-    messages: [
-      { who: 'Lucía', text: '¿Puedo mover mi cita al jueves?' },
-      { who: 'LocalBot', text: 'Claro, reviso disponibilidad para el jueves y te confirmo enseguida.' },
-    ],
-  },
-  {
-    name: 'Carlos Soto',
-    preview: 'Gracias, ya me aparece la confirmación.',
-    time: 'Hace 1 h',
-    status: 'Bot',
-    tone: 'emerald',
-    messages: [
-      { who: 'Carlos', text: 'Gracias, ya me aparece la confirmación.' },
-      { who: 'LocalBot', text: 'Con gusto. Tu cita quedó confirmada.' },
-    ],
-  },
-];
-
-const ALERTS = [
-  {
-    title: 'Hay una conversación que necesita seguimiento',
-    text: 'El bot no resolvió una pregunta sobre disponibilidad de horarios y conviene revisar la respuesta.',
-    tone: 'amber',
-  },
-  {
-    title: 'Se liberó un espacio hoy por cancelación',
-    text: 'Aprovecha el hueco para ofrecer una reprogramación o mover una cita pendiente.',
-    tone: 'sky',
-  },
-];
-
 export default function Dashboard() {
   const tenant = useTenantStore((s) => s.tenant);
   const { appointments, loading, fetchAppointments } = useAppointments();
+  const { summary, fetchSummary } = useAnalytics();
+  const {
+    conversations,
+    loading: conversationsLoading,
+    selectedPhone,
+    thread,
+    fetchConversations,
+    fetchThread,
+  } = useConversations();
   const navigate = useNavigate();
-  const [selectedConversation, setSelectedConversation] = useState(RECENT_CONVERSATIONS[0]);
 
   useEffect(() => {
     const from = startOfDay(subDays(new Date(), 1));
     const to = endOfDay(addDays(new Date(), 6));
     fetchAppointments(from, to);
-  }, [fetchAppointments]);
+    fetchConversations(4);
+    fetchSummary();
+  }, [fetchAppointments, fetchConversations, fetchSummary]);
+
+  const refreshDashboard = useCallback(() => {
+    const from = startOfDay(subDays(new Date(), 1));
+    const to = endOfDay(addDays(new Date(), 6));
+    fetchAppointments(from, to);
+    fetchConversations(4);
+    fetchSummary();
+  }, [fetchAppointments, fetchConversations, fetchSummary]);
+
+  useAppDataRefresh(refreshDashboard);
+
+  useEffect(() => {
+    if (!selectedPhone && conversations[0]?.customerPhone) {
+      fetchThread(conversations[0].customerPhone);
+    }
+  }, [conversations, fetchThread, selectedPhone]);
 
   const metrics = useMemo(() => {
     const today = appointments.filter((a) => isSameDay(new Date(a.scheduledAt), new Date()));
     const yesterday = appointments.filter((a) => isSameDay(new Date(a.scheduledAt), subDays(new Date(), 1)));
     const confirmedToday = today.filter((a) => a.status === 'CONFIRMED').length;
+    const inboundMessages = summary?.totals?.inboundMessages ?? 0;
+    const outboundMessages = summary?.totals?.outboundMessages ?? 0;
+    const responseRate = inboundMessages > 0
+      ? Math.min(100, Math.round((outboundMessages / inboundMessages) * 100))
+      : outboundMessages > 0
+        ? 100
+        : 0;
+    const todaySummary = summary?.totals?.todayAppointments ?? today.filter((a) => a.status !== 'CANCELLED').length;
+    const weekSummary = summary?.totals?.weekAppointments ?? appointments.filter((a) => a.status !== 'CANCELLED').length;
 
     return {
       today,
       yesterday,
       confirmedToday,
-      responseRate: appointments.length ? Math.round((confirmedToday / Math.max(today.length, 1)) * 100) : 0,
-      todayCount: today.filter((a) => a.status !== 'CANCELLED').length,
-      totalWeek: appointments.filter((a) => a.status !== 'CANCELLED').length,
+      todayCount: todaySummary,
+      totalWeek: weekSummary,
+      activeConversations: summary?.totals?.activeConversations ?? conversations.length,
+      inboundMessages,
+      outboundMessages,
+      responseRate,
+      pendingToday: summary?.totals?.pendingToday ?? today.filter((a) => a.status === 'PENDING').length,
+      cancelledWeek: summary?.totals?.cancelledWeek ?? appointments.filter((a) => a.status === 'CANCELLED').length,
     };
-  }, [appointments]);
+  }, [appointments, conversations.length, summary]);
 
   const weekSeries = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => {
@@ -126,11 +107,67 @@ export default function Dashboard() {
     });
   }, [appointments]);
 
+  const alerts = useMemo(() => {
+    const items = [];
+    const urgentConversation = conversations.find((item) => item.tone === 'amber' || item.status === 'Requiere atención');
+    const pendingToday = metrics.pendingToday;
+    const cancelledWeek = metrics.cancelledWeek;
+    const nextAppointment = summary?.upcomingAppointments?.[0];
+
+    if (urgentConversation) {
+      items.push({
+        title: `Dar seguimiento a ${urgentConversation.customerName}`,
+        text: `Último mensaje: ${urgentConversation.preview}`,
+        tone: 'amber',
+      });
+    }
+
+    if (pendingToday > 0) {
+      items.push({
+        title: `${pendingToday} cita${pendingToday === 1 ? '' : 's'} pendiente${pendingToday === 1 ? '' : 's'} hoy`,
+        text: 'Conviene confirmar o responder antes de que llegue la hora.',
+        tone: 'sky',
+      });
+    }
+
+    if (cancelledWeek > 0) {
+      items.push({
+        title: `${cancelledWeek} cancelación${cancelledWeek === 1 ? '' : 'es'} esta semana`,
+        text: 'Aprovecha el hueco para ofrecer una reprogramación.',
+        tone: 'emerald',
+      });
+    }
+
+    if (!items.length && nextAppointment) {
+      items.push({
+        title: 'Siguiente cita lista para atender',
+        text: `La próxima cita está agendada para ${format(new Date(nextAppointment.scheduledAt), 'EEE HH:mm', { locale: es })}.`,
+        tone: 'emerald',
+      });
+    }
+
+    if (!items.length) {
+      items.push({
+        title: 'Todo en orden',
+        text: 'No hay señales urgentes por ahora. Mantén el seguimiento a nuevas conversaciones.',
+        tone: 'emerald',
+      });
+    }
+
+    return items.slice(0, 3);
+  }, [conversations, metrics.pendingToday, metrics.cancelledWeek, summary?.upcomingAppointments]);
+
+  const selectedConversation = conversations.find((item) => item.customerPhone === selectedPhone) ?? conversations[0];
+
   const greet = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Buenos días';
     if (hour < 19) return 'Buenas tardes';
     return 'Buenas noches';
+  };
+
+  const handleConversationSelect = async (item) => {
+    await fetchThread(item.customerPhone);
   };
 
   return (
@@ -144,11 +181,11 @@ export default function Dashboard() {
                 <SparkIcon className="h-4 w-4 text-emerald-500 dark:text-emerald-300" />
                 Panel operativo en tiempo real
               </div>
-              <h2 className="mt-4 max-w-2xl font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
+              <h2 className="mt-4 max-w-2xl font-display text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl dark:text-white">
                 {greet()}{tenant?.businessName ? `, ${tenant.businessName}` : ''}. Todo listo para atender, agendar y responder.
               </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-100/90 dark:text-slate-200/90">
-                Este panel combina la visión ejecutiva de la segunda propuesta con la capa de métricas y actividad del tercer diseño, pero conectado a tus datos reales de citas.
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-200/90">
+                El panel ya no muestra ejemplos sueltos: ahora el centro de mensajes y la agenda salen de la misma data que usa el bot.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
@@ -172,9 +209,9 @@ export default function Dashboard() {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={CalendarIcon} label="Citas hoy" value={metrics.todayCount} hint="Agenda activa" tone="emerald" />
-        <MetricCard icon={MessagesIcon} label="Mensajes en seguimiento" value={metrics.confirmedToday + metrics.yesterday.length} hint="Conversación reciente" tone="sky" />
-        <MetricCard icon={UsersIcon} label="Clientes atendidos" value={Math.max(metrics.totalWeek * 2, 0)} hint="Estimado semanal" tone="violet" />
+        <MetricCard icon={CalendarIcon} label="Citas hoy" value={metrics.todayCount} hint={`+${metrics.pendingToday} pendientes`} tone="emerald" />
+        <MetricCard icon={MessagesIcon} label="Conversaciones" value={metrics.activeConversations} hint={`${metrics.inboundMessages} entrantes · ${metrics.outboundMessages} salientes`} tone="sky" />
+        <MetricCard icon={UsersIcon} label="Citas semana" value={metrics.totalWeek} hint={`${metrics.cancelledWeek} canceladas`} tone="violet" />
         <MetricCard
           icon={ClockIcon}
           label="Estado del bot"
@@ -190,82 +227,74 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
               <div>
                 <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">Centro de mensajes</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Selecciona una conversación para ver el hilo completo.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Los últimos hilos reales de WhatsApp.</p>
               </div>
-              <span className="app-chip">{RECENT_CONVERSATIONS.length} chats</span>
+              <span className="app-chip">{summary?.totals?.activeConversations ?? conversations.length} chats</span>
             </div>
 
             <div className="grid lg:grid-cols-[0.92fr_1.08fr]">
               <div className="border-b border-slate-200 lg:border-b-0 lg:border-r dark:border-slate-800">
-                {RECENT_CONVERSATIONS.map((item) => (
-                  <button
-                    key={item.name}
-                    onClick={() => setSelectedConversation(item)}
-                    className={`flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-slate-50 ${
-                      selectedConversation?.name === item.name ? 'bg-emerald-50/80 dark:bg-emerald-500/10' : 'dark:hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
-                      item.tone === 'amber'
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200'
-                        : item.tone === 'sky'
-                          ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200'
-                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'
-                    }`}>
-                      <MessagesIcon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate font-semibold text-slate-950 dark:text-slate-50">{item.name}</p>
-                        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                          {item.time}
-                        </span>
+                {conversationsLoading ? (
+                  <div className="px-5 py-10 text-sm text-slate-400 dark:text-slate-500">
+                    Cargando conversaciones...
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="px-5 py-10 text-sm text-slate-400 dark:text-slate-500">
+                    No hay conversaciones recientes.
+                  </div>
+                ) : (
+                  conversations.map((item) => (
+                    <button
+                      key={item.customerPhone}
+                      onClick={() => handleConversationSelect(item)}
+                      className={`flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-slate-50 ${
+                        selectedConversation?.customerPhone === item.customerPhone ? 'bg-emerald-50/80 dark:bg-emerald-500/10' : 'dark:hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <ConversationBadge tone={item.tone} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate font-semibold text-slate-950 dark:text-slate-50">{item.customerName}</p>
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                            {item.status}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{item.preview}</p>
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                          {format(new Date(item.updatedAt), 'dd MMM, HH:mm', { locale: es })}
+                        </p>
                       </div>
-                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{item.preview}</p>
-                      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                        {item.status}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))
+                )}
               </div>
 
               <div className="p-5 sm:p-6">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">Hilo activo</p>
-                    <h4 className="mt-1 text-xl font-bold text-slate-950 dark:text-slate-50">{selectedConversation?.name}</h4>
+                    <h4 className="mt-1 text-xl font-bold text-slate-950 dark:text-slate-50">{selectedConversation?.customerName ?? 'Sin selección'}</h4>
                   </div>
                   <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                     Activo
                   </span>
                 </div>
 
-                <div className="space-y-3 rounded-3xl bg-slate-50 p-4 dark:bg-slate-900">
-                  {selectedConversation?.messages?.map((message, index) => (
-                    <div
-                      key={`${message.who}-${index}`}
-                      className={`flex ${message.who === 'LocalBot' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 ${
-                          message.who === 'LocalBot'
-                            ? 'bg-emerald-600 text-white'
-                            : 'border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                        }`}
-                      >
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                          {message.who}
-                        </p>
-                        <p>{message.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                  Aquí puedes conectar el panel real de mensajes cuando el backend de conversaciones esté listo.
-                </div>
+                {thread?.messages?.length ? (
+                  <div className="space-y-3 rounded-3xl bg-slate-50 p-4 dark:bg-slate-900">
+                    {thread.messages.slice(-6).map((message, index) => (
+                      <MessageBubble
+                        key={`${message.role}-${message.createdAt}-${index}`}
+                        role={message.role}
+                        text={message.content}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                    Selecciona una conversación para ver el hilo completo.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -320,7 +349,7 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Cuando entren nuevos mensajes, el bot empezará a llenar este espacio.</p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {metrics.today.map((appt) => {
                   const start = new Date(appt.scheduledAt);
                   return (
@@ -360,11 +389,11 @@ export default function Dashboard() {
 
           <div className="app-card">
             <div className="border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
-              <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">Atención requerida</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Señales que conviene revisar pronto.</p>
+              <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">Acciones sugeridas</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Señales que conviene revisar pronto, derivadas de la actividad real.</p>
             </div>
             <div className="space-y-3 px-5 py-5 sm:px-6">
-              {ALERTS.map((alert) => (
+              {alerts.map((alert) => (
                 <div
                   key={alert.title}
                   className={`rounded-2xl border px-4 py-4 ${
@@ -444,4 +473,40 @@ function StatusPill({ status }) {
   };
 
   return <span className={`rounded-full px-3 py-1 text-xs font-semibold ${map[status] ?? map.CONFIRMED} dark:border dark:border-slate-700`}>{labels[status] ?? 'Confirmada'}</span>;
+}
+
+function ConversationBadge({ tone }) {
+  const toneMap = {
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
+    emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200',
+    sky: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200',
+    slate: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300',
+  };
+
+  return (
+    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${toneMap[tone] ?? toneMap.slate}`}>
+      <MessagesIcon className="h-4 w-4" />
+    </div>
+  );
+}
+
+function MessageBubble({ role, text }) {
+  const fromBot = role === 'assistant';
+
+  return (
+    <div className={`flex ${fromBot ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+          fromBot
+            ? 'bg-emerald-600 text-white'
+            : 'border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
+        }`}
+      >
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+          {fromBot ? 'LocalBot' : 'Cliente'}
+        </p>
+        <p>{text}</p>
+      </div>
+    </div>
+  );
 }

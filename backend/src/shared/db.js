@@ -3,8 +3,21 @@
 
 import { PrismaClient } from '@prisma/client';
 import logger from './logger.js';
+import env from '../config/env.js';
+import { normalizeDatabaseUrl } from './database-url.js';
+
+const databaseUrl = normalizeDatabaseUrl(env.databaseUrl);
+
+if (databaseUrl.changed) {
+  logger.warn({ source: 'prisma', reason: databaseUrl.reason }, 'Normalized DATABASE_URL for startup');
+}
 
 const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: databaseUrl.url,
+    },
+  },
   log: [
     { level: 'warn', emit: 'event' },
     { level: 'error', emit: 'event' },

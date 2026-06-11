@@ -1,16 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ServiceList from '../components/services/ServiceList.jsx';
 import ServiceForm from '../components/services/ServiceForm.jsx';
+import { useAppDataRefresh } from '../hooks/useAppDataRefresh.js';
 import { useServices } from '../hooks/useServices.js';
 import { MessagesIcon, PlusIcon, SparkIcon } from '../components/common/Icons.jsx';
 
 export default function Services() {
   const { services, loading, fetchServices, createService, updateService, deleteService } = useServices();
   const [showForm, setShowForm] = useState(false);
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get('q') ?? '';
 
   useEffect(() => {
     fetchServices();
   }, [fetchServices]);
+
+  const refreshServices = useCallback(() => {
+    fetchServices();
+  }, [fetchServices]);
+
+  useAppDataRefresh(refreshServices);
 
   const totals = useMemo(() => {
     const active = services.filter((s) => s.active !== false).length;
@@ -20,6 +30,18 @@ export default function Services() {
     const maxPrice = services.length ? Math.max(...services.map((item) => Number(item.price ?? 0))) : 0;
     return { active, avgDuration, maxPrice };
   }, [services]);
+
+  const visibleServices = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return services;
+
+    return services.filter((service) => [
+      service.name,
+      service.description,
+      String(service.durationMin ?? ''),
+      String(service.price ?? ''),
+    ].some((value) => String(value ?? '').toLowerCase().includes(term)));
+  }, [searchTerm, services]);
 
   const handleCreate = async (data) => {
     await createService(data);
@@ -56,13 +78,25 @@ export default function Services() {
         <Kpi label="Precio máximo" value={`$${totals.maxPrice.toFixed(2)}`} icon={SparkIcon} tone="violet" />
       </section>
 
+      {searchTerm && (
+        <div className="app-card flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">Filtro activo</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Mostrando resultados para <span className="font-semibold text-slate-950 dark:text-slate-100">{searchTerm}</span>
+            </p>
+          </div>
+          <span className="app-chip">{visibleServices.length} coincidencias</span>
+        </div>
+      )}
+
       {showForm && <ServiceForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} />}
 
       <div className="app-card p-4 sm:p-5">
         {loading ? (
           <div className="py-12 text-center text-sm text-slate-400">Cargando servicios...</div>
         ) : (
-          <ServiceList services={services} onUpdate={updateService} onDelete={deleteService} />
+          <ServiceList services={visibleServices} onUpdate={updateService} onDelete={deleteService} />
         )}
       </div>
     </div>

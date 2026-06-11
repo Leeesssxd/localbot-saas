@@ -8,6 +8,7 @@ export default function ConfirmDialog({
   onCancel,
   confirmLabel = 'Confirmar',
   danger = false,
+  loading = false,
 }) {
   if (!isOpen) return null;
 
@@ -43,9 +44,10 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
+            disabled={loading}
             className={`app-button ${danger ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
           >
-            {confirmLabel}
+            {loading ? 'Procesando...' : confirmLabel}
           </button>
         </div>
       </div>

@@ -8,8 +8,23 @@ import { extractMessageData } from './webhook.validator.js';
 import { getAIClient } from '../ai/ai.client.js';
 import { buildPrompt } from '../ai/prompt.builder.js';
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.client.js';
-import { bookAppointment, updateAppointmentStatus } from '../appointments/appointments.service.js';
+import { bookAppointment, updateAppointmentStatus, rescheduleAppointment } from '../appointments/appointments.service.js';
 import { getAvailableSlots } from '../appointments/schedule.service.js';
+import {
+  extractRequestedDate,
+  extractRequestedTime,
+  isCancellationRequest,
+  isRescheduleRequest,
+  looksLikeBookingRequest,
+  normalizeText,
+  resolveBookingDate,
+} from './intent.rules.js';
+import {
+  buildUnavailableSlotMessage,
+  resolveRescheduleDateTime,
+} from './slot.suggestions.js';
+import { findMatchingService } from './service.matching.js';
+import { inferBookingContext } from './booking.context.js';
 
 const HISTORY_PAIRS = 10; // last 10 turns = 20 messages
 const AVAILABILITY_DAYS = 3;
@@ -73,6 +88,24 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
       logger.info(ctx, 'Business marked closed — continuing normal AI flow');
     }
 
+    const rescheduleIntent = isRescheduleRequest(text);
+    if (rescheduleIntent) {
+      const rescheduleReply = await handleRescheduleIntent(ctx, tenant, fromPhone, text);
+      await persistConversationTurn(tenantId, fromPhone, text, rescheduleReply);
+      await prisma.webhookLog.create({
+        data: {
+          tenantId,
+          direction: 'OUT',
+          toPhone: fromPhone,
+          content: rescheduleReply,
+          status: 'PROCESSED',
+        },
+      });
+      await updateLog(logRecord.id, 'PROCESSED');
+      logger.info(ctx, 'Reschedule processed successfully');
+      return;
+    }
+
     const cancellationIntent = isCancellationRequest(text);
     if (cancellationIntent) {
       const cancellationReply = await handleCancellationIntent(ctx, tenant, fromPhone, text);
@@ -108,12 +141,74 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     });
 
     const availability = await buildAvailabilityWindow(tenantId, tenant, AVAILABILITY_DAYS);
+    const bookingContext = inferBookingContext(historyRows, services, tenant.timezone);
+
+    const directBooking = resolveDirectBookingIntent({
+      text,
+      services,
+      availability,
+      timezone: tenant.timezone,
+      bookingContext,
+    });
+
+    if (directBooking) {
+      const replyText = await handleBookingIntent(
+        ctx,
+        tenant,
+        directBooking,
+        fromPhone,
+        text,
+        availability
+      );
+
+      await persistConversationTurn(tenantId, fromPhone, text, replyText);
+      await prisma.webhookLog.create({
+        data: {
+          tenantId,
+          direction: 'OUT',
+          toPhone: fromPhone,
+          content: replyText,
+          status: 'PROCESSED',
+        },
+      });
+
+      await updateLog(logRecord.id, 'PROCESSED');
+      logger.info(ctx, 'Direct booking resolved without AI');
+      return;
+    }
+
+    const bookingClarification = buildBookingClarification({
+      text,
+      services,
+      availability,
+      timezone: tenant.timezone,
+      bookingContext,
+    });
+
+    if (bookingClarification) {
+      await sendWhatsAppMessage(tenant, fromPhone, bookingClarification);
+      await persistConversationTurn(tenantId, fromPhone, text, bookingClarification);
+      await prisma.webhookLog.create({
+        data: {
+          tenantId,
+          direction: 'OUT',
+          toPhone: fromPhone,
+          content: bookingClarification,
+          status: 'PROCESSED',
+        },
+      });
+
+      await updateLog(logRecord.id, 'PROCESSED');
+      logger.info(ctx, 'Booking clarification sent without AI');
+      return;
+    }
 
     const messages = buildPrompt({
       tenant,
       services,
       availability,
       history,
+      bookingContext,
       userMessage: text,
     });
 
@@ -136,17 +231,15 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     let bookingHandled = false;
 
     // Try to detect booking intent (JSON response from AI)
-    try {
-      const parsed = JSON.parse(aiResponse);
+    const parsed = parseStructuredIntent(aiResponse);
+    if (parsed) {
       if (parsed?.intent === 'BOOK') {
         bookingHandled = true;
-        replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone, text);
+        replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone, text, availability);
       } else if (parsed?.intent === 'HANDOFF') {
         bookingHandled = true;
         replyText = await handleHandoffIntent(ctx, tenant, parsed, fromPhone);
       }
-    } catch {
-      // Not JSON — treat as conversational reply (normal path)
     }
 
     if (!bookingHandled) {
@@ -178,8 +271,15 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
 }
 
 // ── Booking intent handler ─────────────────────────────────────────────────
-async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) {
+async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage, availability = []) {
   const { service_id, slot, scheduled_date, customer_name } = parsed;
+
+  if (!service_id || !slot) {
+    const missingMessage = 'Para agendar necesito saber qué servicio quieres y a qué hora te queda mejor.';
+    await sendWhatsAppMessage(tenant, fromPhone, missingMessage);
+    return missingMessage;
+  }
+
   const bookingDate = resolveBookingDate({
     scheduledDate: scheduled_date,
     userMessage,
@@ -221,7 +321,13 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage) 
     logger.warn({ ...ctx, err: err.message }, 'Booking failed');
 
     if (err.name === 'SlotUnavailableError') {
-      const unavailMsg = 'Lo sentimos, ese horario ya no está disponible. ¿Te gustaría elegir otro horario?';
+      const unavailMsg = buildUnavailableSlotMessage({
+        tenant,
+        userMessage,
+        availability,
+        requestedDate: bookingDate,
+        requestedTime: slot,
+      });
       await sendWhatsAppMessage(tenant, fromPhone, unavailMsg);
       return unavailMsg;
     }
@@ -280,6 +386,78 @@ async function handleCancellationIntent(ctx, tenant, fromPhone, userMessage) {
   return reply;
 }
 
+async function handleRescheduleIntent(ctx, tenant, fromPhone, userMessage) {
+  const futureAppointments = await prisma.appointment.findMany({
+    where: {
+      tenantId: tenant.id,
+      customerPhone: fromPhone,
+      status: { in: ['CONFIRMED', 'PENDING'] },
+      scheduledAt: { gte: new Date() },
+    },
+    include: { service: true },
+    orderBy: { scheduledAt: 'asc' },
+  });
+
+  if (futureAppointments.length === 0) {
+    const noAppointmentMsg = 'No encuentro una cita próxima para mover. Si gustas, dime qué fecha y hora quieres para ayudarte a agendar otra.';
+    await sendWhatsAppMessage(tenant, fromPhone, noAppointmentMsg);
+    return noAppointmentMsg;
+  }
+
+  const requestedMatch = pickMatchingAppointment(futureAppointments, userMessage, tenant.timezone);
+  const appointment = requestedMatch ?? futureAppointments[0];
+  const targetDateTime = resolveRescheduleDateTime(userMessage, tenant.timezone, appointment);
+
+  if (!targetDateTime) {
+    const askForTime = `Claro, puedo mover tu cita de ${appointment.service?.name ?? 'servicio'}. ¿Para qué día y hora te gustaría reprogramarla?`;
+    await sendWhatsAppMessage(tenant, fromPhone, askForTime);
+    return askForTime;
+  }
+
+  try {
+    const updated = await rescheduleAppointment({
+      tenantId: tenant.id,
+      appointmentId: appointment.id,
+      scheduledAt: targetDateTime.toISOString(),
+      notes: 'Reagendada por WhatsApp',
+    });
+
+    const dateStr = new Date(updated.scheduledAt).toLocaleString('es-MX', {
+      timeZone: tenant.timezone,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const reply = `Listo, moví tu cita de ${updated.service?.name ?? 'servicio'} para ${dateStr}. Si necesitas otro ajuste, dime y te ayudo.`;
+    await sendWhatsAppMessage(tenant, fromPhone, reply);
+    logger.info({ ...ctx, appointmentId: updated.id, scheduledAt: updated.scheduledAt }, 'Appointment rescheduled');
+    return reply;
+  } catch (err) {
+    logger.warn({ ...ctx, err: err.message }, 'Reschedule failed');
+
+    if (err.name === 'SlotUnavailableError') {
+      const alternatives = await buildAvailabilityWindow(tenant.id, tenant, AVAILABILITY_DAYS);
+      const unavailMsg = buildUnavailableSlotMessage({
+        tenant,
+        userMessage,
+        availability: alternatives,
+        requestedDate: targetDateTime ? getLocalDateString(targetDateTime, tenant.timezone) : null,
+        requestedTime: targetDateTime ? formatTimeInTimeZone(targetDateTime, tenant.timezone) : null,
+        reschedule: true,
+      });
+      await sendWhatsAppMessage(tenant, fromPhone, unavailMsg);
+      return unavailMsg;
+    }
+
+    const errMsg = 'Hubo un problema al mover tu cita. ¿Quieres que te proponga otro horario disponible?';
+    await sendWhatsAppMessage(tenant, fromPhone, errMsg);
+    return errMsg;
+  }
+}
+
 async function updateLog(id, status, errorMsg) {
   await prisma.webhookLog.update({
     where: { id },
@@ -312,18 +490,6 @@ async function buildAvailabilityWindow(tenantId, tenant, daysCount) {
   }
 
   return window;
-}
-
-function resolveBookingDate({ scheduledDate, userMessage, timezone }) {
-  if (typeof scheduledDate === 'string' && scheduledDate.trim()) {
-    return scheduledDate.trim();
-  }
-
-  const text = (userMessage ?? '').toLowerCase();
-  const todayLocal = getLocalDateString(new Date(), timezone ?? 'America/Mexico_City');
-  if (text.includes('pasado mañana')) return addDaysToDateString(todayLocal, 2);
-  if (text.includes('mañana')) return addDaysToDateString(todayLocal, 1);
-  return todayLocal;
 }
 
 function addDays(date, days) {
@@ -400,7 +566,7 @@ function getTimeZoneOffsetMs(date, timeZone) {
 
 function pickMatchingAppointment(appointments, userMessage, timeZone) {
   const text = (userMessage ?? '').toLowerCase();
-  const requestedDate = extractRequestedDate(text, timeZone);
+  const requestedDate = extractRequestedDate(text, timeZone, getLocalDateString, addDaysToDateString);
   const requestedTime = extractRequestedTime(text);
 
   return appointments.find((appointment) => {
@@ -418,36 +584,171 @@ function pickMatchingAppointment(appointments, userMessage, timeZone) {
   });
 }
 
-function extractRequestedDate(text, timeZone) {
-  const normalized = (text ?? '').toLowerCase();
-  if (normalized.includes('pasado mañana')) return addDaysToDateString(getLocalDateString(new Date(), timeZone), 2);
-  if (normalized.includes('mañana')) return addDaysToDateString(getLocalDateString(new Date(), timeZone), 1);
-  if (normalized.includes('hoy')) return getLocalDateString(new Date(), timeZone);
+export function resolveDirectBookingIntent({ text, services, availability, timezone, bookingContext }) {
+  const normalized = normalizeText(text);
+  const service = findMatchingService(normalized, services) ?? bookingContext?.service ?? null;
+  const slot = extractRequestedTime(text) ?? bookingContext?.time ?? null;
+  const explicitDate = extractRequestedDate(text, timezone, getLocalDateString, addDaysToDateString);
+  const scheduled_date = explicitDate
+    ?? bookingContext?.date
+    ?? resolveBookingDate({
+      userMessage: text,
+      timezone,
+      getLocalDateString,
+      addDaysToDateString,
+    });
+
+  if (!service || !slot) return null;
+  if (!looksLikeBookingRequest(normalized) && !bookingContext) return null;
+
+  const dayAvailability = availability.find((day) => day.date === scheduled_date);
+  if (dayAvailability && !dayAvailability.slots.includes(slot)) {
+    return null;
+  }
+
+  return {
+    intent: 'BOOK',
+    service_id: service.id,
+    scheduled_date,
+    slot,
+    customer_name: extractCustomerName(text),
+  };
+}
+
+export function buildBookingClarification({ text, services, availability, timezone, bookingContext }) {
+  const normalized = normalizeText(text);
+  if (!looksLikeBookingRequest(normalized)) return null;
+
+  const requestedDate = extractRequestedDate(
+    normalized,
+    timezone,
+    getLocalDateString,
+    addDaysToDateString
+  ) ?? bookingContext?.date ?? null;
+  const requestedTime = extractRequestedTime(text) ?? bookingContext?.time ?? null;
+  const service = findMatchingService(normalized, services) ?? bookingContext?.service ?? null;
+
+  if (requestedTime) {
+    if (requestedDate) {
+      const dayAvailability = availability.find((day) => day.date === requestedDate);
+      if (dayAvailability?.slots?.includes(requestedTime)) {
+        return null;
+      }
+
+      const preview = previewAvailability(dayAvailability?.slots ?? [], requestedTime);
+      if (preview) {
+        return `Claro, para ${service?.name ?? 'ese servicio'} ${describeRelativeDate(requestedDate, timezone)} tengo estos horarios cercanos: ${preview}. ¿Cuál te queda mejor?`;
+      }
+    }
+
+    return `Claro, para ${service?.name ?? 'agendar tu cita'} te ayudo con gusto. ¿Te queda bien esa hora o prefieres otro horario?`;
+  }
+
+  if (service && requestedDate) {
+    return `Perfecto, para ${service.name} ${describeRelativeDate(requestedDate, timezone)}. ¿Qué hora te gustaría?`;
+  }
+
+  if (service) {
+    return `Claro, te ayudo con ${service.name}. ¿Para qué día y hora te gustaría agendarla?`;
+  }
+
+  if (requestedDate) {
+    return `Claro, te ayudo a agendar ${describeRelativeDate(requestedDate, timezone)}. ¿Qué servicio necesitas y a qué hora te queda mejor?`;
+  }
+
+  return 'Claro, te ayudo a agendar. ¿Qué servicio necesitas y a qué hora te queda mejor?';
+}
+
+function previewAvailability(slots, requestedTime = null) {
+  if (!Array.isArray(slots) || slots.length === 0) return '';
+
+  const sorted = [...slots].sort((a, b) => a.localeCompare(b));
+  if (!requestedTime) {
+    return sorted.slice(0, 3).join(', ');
+  }
+
+  const requestedMinutes = timeStringToMinutes(requestedTime);
+  return sorted
+    .map((slot) => ({
+      slot,
+      diff: Math.abs(timeStringToMinutes(slot) - requestedMinutes),
+    }))
+    .sort((a, b) => a.diff - b.diff || a.slot.localeCompare(b.slot))
+    .slice(0, 3)
+    .map((item) => item.slot)
+    .join(', ');
+}
+
+function describeRelativeDate(dateString, timezone) {
+  const today = getLocalDateString(new Date(), timezone ?? 'America/Mexico_City');
+  if (dateString === today) return 'hoy';
+  if (dateString === addDaysToDateString(today, 1)) return 'mañana';
+  if (dateString === addDaysToDateString(today, 2)) return 'pasado mañana';
+
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.toLocaleDateString('es-MX', {
+    timeZone: timezone ?? 'America/Mexico_City',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+function timeStringToMinutes(time) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return (hours * 60) + minutes;
+}
+
+function extractCustomerName(text) {
+  const source = (text ?? '').trim();
+  const patterns = [
+    /(?:me llamo|soy|mi nombre es)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\- ]{2,40})/i,
+    /(?:para|nombre)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\- ]{2,40})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  return 'Cliente';
+}
+
+function parseStructuredIntent(aiResponse) {
+  if (typeof aiResponse !== 'string') return null;
+
+  const stripped = aiResponse
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+  const attempts = [stripped];
+  const firstBrace = stripped.indexOf('{');
+  const lastBrace = stripped.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    attempts.push(stripped.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of attempts) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && parsed.intent) return parsed;
+    } catch {
+      // keep trying
+    }
+  }
+
   return null;
 }
 
-function extractRequestedTime(text) {
-  const match = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/i);
-  if (!match) return null;
-
-  let hours = Number(match[1]);
-  const minutes = match[2] ? Number(match[2]) : 0;
-  const meridiem = (match[3] ?? '').toLowerCase();
-
-  if (meridiem.includes('p') && hours < 12) hours += 12;
-  if (meridiem.includes('a') && hours === 12) hours = 0;
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function isCancellationRequest(text) {
-  const normalized = (text ?? '').toLowerCase();
-  if (normalized.includes('no voy a poder')) return true;
-  if (normalized.includes('no podre')) return true;
-  if (normalized.includes('no podré')) return true;
-  if (normalized.includes('cancel')) return true;
-  if (normalized.includes('reagend')) return true;
-  if (normalized.includes('mover mi cita')) return true;
-  if (normalized.includes('cambiar mi cita')) return true;
-  return false;
+function formatTimeInTimeZone(date, timeZone) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone ?? 'America/Mexico_City',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
 }

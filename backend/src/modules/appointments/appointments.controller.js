@@ -4,6 +4,7 @@ import {
   listAppointments,
   updateAppointmentStatus,
   createManualAppointment,
+  rescheduleAppointment,
 } from './appointments.service.js';
 
 export async function getAppointments(request, reply) {
@@ -38,5 +39,20 @@ export async function updateAppointment(request, reply) {
   const { status, notes } = request.body;
 
   const updated = await updateAppointmentStatus(tenantId, id, status, notes);
+  return reply.send(updated);
+}
+
+export async function rescheduleAppointmentHandler(request, reply) {
+  const { tenantId } = request.user;
+  const { id } = request.params;
+  const { scheduledAt, notes } = request.body;
+
+  const updated = await rescheduleAppointment({
+    tenantId,
+    appointmentId: id,
+    scheduledAt,
+    notes,
+  });
+
   return reply.send(updated);
 }

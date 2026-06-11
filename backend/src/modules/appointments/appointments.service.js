@@ -134,6 +134,44 @@ export async function createManualAppointment({ tenantId, serviceId, customerPho
   }
 }
 
+/**
+ * Reschedules an existing appointment to a new datetime.
+ */
+export async function rescheduleAppointment({ tenantId, appointmentId, scheduledAt, notes }) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: { service: true },
+  });
+
+  if (!appointment) throw new NotFoundError('Appointment');
+  if (appointment.tenantId !== tenantId) throw new ForbiddenError();
+
+  const nextScheduledAt = new Date(scheduledAt);
+  if (Number.isNaN(nextScheduledAt.getTime())) {
+    throw new Error('Invalid scheduledAt value');
+  }
+
+  const nextEndsAt = new Date(nextScheduledAt.getTime() + appointment.service.durationMin * 60 * 1000);
+
+  try {
+    return await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        scheduledAt: nextScheduledAt,
+        endsAt: nextEndsAt,
+        status: 'CONFIRMED',
+        ...(notes !== undefined && { notes }),
+      },
+      include: { service: true },
+    });
+  } catch (err) {
+    if (err.code === 'P2002' || err.message?.includes('no_overlap') || err.message?.includes('exclusion constraint')) {
+      throw new SlotUnavailableError(scheduledAt);
+    }
+    throw err;
+  }
+}
+
 function buildZonedDate({ date, hours, minutes, timeZone }) {
   const [year, month, day] = date.split('-').map(Number);
   const utcGuess = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);

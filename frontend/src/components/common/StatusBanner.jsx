@@ -13,6 +13,12 @@ export default function StatusBanner() {
   if (status === 'TRIAL') {
     const daysLeft = differenceInDays(new Date(trialEnd), new Date());
     const urgent = daysLeft <= 5;
+    const message = daysLeft > 0
+      ? `Período de prueba: ${daysLeft} día${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}.`
+      : daysLeft === 0
+        ? 'Tu período de prueba venció hoy.'
+        : `Tu período de prueba venció hace ${Math.abs(daysLeft)} día${Math.abs(daysLeft) !== 1 ? 's' : ''}.`;
+
     return (
       <div
         className={`border-b ${
@@ -32,11 +38,7 @@ export default function StatusBanner() {
             {urgent ? <ClockIcon className="h-4 w-4" /> : <SparkIcon className="h-4 w-4" />}
           </span>
           <div className="min-w-0">
-            <p className="font-semibold">
-              {daysLeft > 0
-                ? `Período de prueba: ${daysLeft} día${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}.`
-                : 'Tu período de prueba venció hoy.'}
-            </p>
+            <p className="font-semibold">{message}</p>
             <p className="text-xs opacity-80">Para continuar usando LocalBot, contacta a soporte o actualiza tu plan.</p>
           </div>
         </div>

@@ -54,6 +54,8 @@ npm run dev
 
 Backend runs at: http://localhost:3000
 
+If the backend refuses to stay up on first launch, run `npm run doctor` inside `backend/` to check DNS, port reachability, missing secrets, and the Supabase connection string shape. For Supabase direct Postgres, keep the host as-is; the backend now adds `sslmode=require` automatically when it is missing.
+
 ### 3. Frontend setup
 
 ```bash

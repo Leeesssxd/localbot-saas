@@ -10,6 +10,14 @@ function required(name) {
   return value;
 }
 
+function requiredDatabaseUrl(name) {
+  const value = required(name);
+  if (/TU_PASSWORD_PRISMA|REPLACE_WITH/i.test(value)) {
+    throw new Error(`Missing real database password in ${name}. Replace the placeholder value from backend/.env.`);
+  }
+  return value;
+}
+
 function optional(name, defaultValue) {
   return process.env[name] ?? defaultValue;
 }
@@ -19,7 +27,7 @@ const env = {
   nodeEnv: optional('NODE_ENV', 'development'),
   isDev: optional('NODE_ENV', 'development') === 'development',
 
-  databaseUrl: required('DATABASE_URL'),
+  databaseUrl: requiredDatabaseUrl('DATABASE_URL'),
 
   jwt: {
     accessSecret: required('JWT_ACCESS_SECRET'),
@@ -35,6 +43,7 @@ const env = {
     groqTimeoutMs: parseInt(optional('GROQ_TIMEOUT_MS', '10000'), 10),
     geminiApiKey: optional('GEMINI_API_KEY', ''),
     geminiModel: optional('GEMINI_MODEL', 'gemini-3.1-flash-lite'),
+    geminiTimeoutMs: parseInt(optional('GEMINI_TIMEOUT_MS', '10000'), 10),
   },
 
   meta: {

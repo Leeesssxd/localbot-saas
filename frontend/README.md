@@ -23,6 +23,8 @@ El resultado final mantiene el flujo funcional del frontend original, pero con u
 ## Variables de entorno
 
 - `VITE_API_URL`: URL base del backend en Railway o en local.
+- Si la dejas vacía en desarrollo, Vite usa su proxy local y el frontend llama a `/api`.
+- Credenciales demo para el seed local: `admin@localbot.dev` / `admin123`.
 
 ## Desarrollo
 

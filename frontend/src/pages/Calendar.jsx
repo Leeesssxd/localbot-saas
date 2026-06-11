@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { addMonths, endOfMonth, startOfMonth } from 'date-fns';
 import CalendarView from '../components/calendar/CalendarView.jsx';
 import AppointmentModal from '../components/calendar/AppointmentModal.jsx';
 import { useAppointments } from '../hooks/useAppointments.js';
+import { useAppDataRefresh } from '../hooks/useAppDataRefresh.js';
 import { useServices } from '../hooks/useServices.js';
 import { CalendarIcon, PlusIcon, SparkIcon } from '../components/common/Icons.jsx';
 
@@ -14,6 +16,8 @@ export default function Calendar() {
   const [newAppt, setNewAppt] = useState({ serviceId: '', customerName: '', customerPhone: '', scheduledAt: '' });
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+  const deepLinkedAppointmentId = searchParams.get('appointmentId');
 
   useEffect(() => {
     const from = startOfMonth(new Date());
@@ -21,6 +25,24 @@ export default function Calendar() {
     fetchAppointments(from, to);
     fetchServices();
   }, [fetchAppointments, fetchServices]);
+
+  const refreshCalendar = useCallback(() => {
+    const from = startOfMonth(new Date());
+    const to = endOfMonth(addMonths(new Date(), 1));
+    fetchAppointments(from, to);
+    fetchServices();
+  }, [fetchAppointments, fetchServices]);
+
+  useAppDataRefresh(refreshCalendar);
+
+  useEffect(() => {
+    if (!deepLinkedAppointmentId) return;
+    const match = appointments.find((item) => item.id === deepLinkedAppointmentId);
+    if (match) {
+      setSelected(match);
+      setShowNewForm(false);
+    }
+  }, [appointments, deepLinkedAppointmentId]);
 
   const overview = useMemo(() => {
     const confirmed = appointments.filter((a) => a.status === 'CONFIRMED').length;

@@ -14,7 +14,7 @@ export async function geminiComplete(messages) {
   const model = env.ai.geminiModel;
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), env.ai.groqTimeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), env.ai.geminiTimeoutMs ?? env.ai.groqTimeoutMs);
 
   // Convert OpenAI-style messages to Gemini format
   const systemMsg = messages.find((m) => m.role === 'system')?.content ?? '';

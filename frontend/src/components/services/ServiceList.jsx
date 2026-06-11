@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ServiceForm from './ServiceForm.jsx';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
 import { EditIcon, TrashIcon, SparkIcon } from '../common/Icons.jsx';
@@ -6,6 +6,15 @@ import { EditIcon, TrashIcon, SparkIcon } from '../common/Icons.jsx';
 export default function ServiceList({ services, onUpdate, onDelete }) {
   const [editingId, setEditingId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+
+  useEffect(() => {
+    if (editingId && !services.some((service) => service.id === editingId)) {
+      setEditingId(null);
+    }
+    if (deleteId && !services.some((service) => service.id === deleteId)) {
+      setDeleteId(null);
+    }
+  }, [deleteId, editingId, services]);
 
   const handleDelete = async () => {
     await onDelete(deleteId);

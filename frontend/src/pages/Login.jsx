@@ -6,8 +6,8 @@ import { BrandMark, ShieldIcon, SparkIcon, UsersIcon } from '../components/commo
 import '../styles/login.scss';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@localbot.dev');
+  const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -85,9 +85,10 @@ export default function Login() {
                     type="email"
                     required
                     autoComplete="email"
+                    autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@negocio.com"
+                    placeholder="admin@localbot.dev"
                     className="app-input bg-slate-900 text-slate-100 placeholder:text-slate-500 dark:bg-slate-900"
                   />
                 </div>
@@ -102,10 +103,14 @@ export default function Login() {
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Tu contraseña"
+                    placeholder="admin123"
                     className="app-input bg-slate-900 text-slate-100 placeholder:text-slate-500"
                   />
                 </div>
+
+                <p className="text-xs leading-5 text-slate-400">
+                  Credenciales demo: <span className="font-semibold text-slate-300">admin@localbot.dev</span> / <span className="font-semibold text-slate-300">admin123</span>
+                </p>
 
                 {error && (
                   <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200">
