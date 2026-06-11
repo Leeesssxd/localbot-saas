@@ -4,6 +4,7 @@ import { findMatchingService } from '../../src/modules/webhook/service.matching.
 describe('service matching', () => {
   const services = [
     { id: 'svc-haircut', name: 'Corte de cabello', description: 'Corte profesional para dama y caballero' },
+    { id: 'svc-kids', name: 'Corte infantil', description: 'Corte para ninos' },
     { id: 'svc-beard', name: 'Arreglo de barba', description: 'Perfilado y diseño de barba' },
     { id: 'svc-color', name: 'Coloración', description: 'Tinte y retoque de color' },
   ];
@@ -16,6 +17,11 @@ describe('service matching', () => {
   it('matches a service using description keywords when the name is not explicit', () => {
     const match = findMatchingService('me gustaría un perfilado de barba', services);
     expect(match?.id).toBe('svc-beard');
+  });
+
+  it('prefers the regular haircut when the message only says corte', () => {
+    const match = findMatchingService('mi novia quiere un corte a las 2', services);
+    expect(match?.id).toBe('svc-haircut');
   });
 
   it('returns null when the text does not resemble any service', () => {

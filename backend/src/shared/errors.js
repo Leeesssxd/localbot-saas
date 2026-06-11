@@ -64,3 +64,11 @@ export class ForbiddenError extends Error {
     this.statusCode = 403;
   }
 }
+
+export class PastDateError extends Error {
+  constructor() {
+    super('Cannot book appointments in the past.');
+    this.name = 'PastDateError';
+    this.statusCode = 400;
+  }
+}

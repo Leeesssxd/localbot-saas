@@ -3,7 +3,7 @@
 // The no-overlap guarantee lives in PostgreSQL (EXCLUDE constraint).
 
 import prisma from '../../shared/db.js';
-import { SlotUnavailableError, NotFoundError, ForbiddenError } from '../../shared/errors.js';
+import { SlotUnavailableError, NotFoundError, ForbiddenError, PastDateError } from '../../shared/errors.js';
 import logger from '../../shared/logger.js';
 
 /**
@@ -28,6 +28,10 @@ export async function bookAppointment({ tenantId, serviceId, slot, scheduledDate
     minutes,
     timeZone,
   });
+
+  if (scheduledAt.getTime() < Date.now() - 60 * 1000) {
+    throw new PastDateError();
+  }
 
   const endsAt = new Date(scheduledAt.getTime() + service.durationMin * 60 * 1000);
 

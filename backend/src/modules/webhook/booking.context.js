@@ -1,6 +1,9 @@
 import {
   extractRequestedDate,
   extractRequestedTime,
+  isCasualAcknowledgement,
+  isConversationResetRequest,
+  isNegativeResponse,
   looksLikeBookingRequest,
   normalizeText,
 } from './intent.rules.js';
@@ -15,6 +18,7 @@ export function inferBookingContext(historyRows, services, timezone) {
     service: null,
     date: null,
     time: null,
+    active: false,
   };
 
   let inBookingThread = false;
@@ -22,6 +26,15 @@ export function inferBookingContext(historyRows, services, timezone) {
   for (const row of rows) {
     const content = row?.content ?? '';
     const normalized = normalizeText(content);
+
+    if (
+      row?.role === 'user'
+      && !inBookingThread
+      && (isConversationResetRequest(content) || isCasualAcknowledgement(content) || isNegativeResponse(content))
+    ) {
+      break;
+    }
+
     const hasBookingSignal =
       looksLikeBookingRequest(content)
       || BOOKING_CONTEXT_RE.test(normalized)
@@ -29,6 +42,7 @@ export function inferBookingContext(historyRows, services, timezone) {
 
     if (hasBookingSignal) {
       inBookingThread = true;
+      context.active = true;
     }
 
     if (!inBookingThread) {

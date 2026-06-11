@@ -13,7 +13,11 @@ import { getAvailableSlots } from '../appointments/schedule.service.js';
 import {
   extractRequestedDate,
   extractRequestedTime,
+  isBookingContinuation,
+  isCasualAcknowledgement,
   isCancellationRequest,
+  isConversationResetRequest,
+  isNegativeResponse,
   isRescheduleRequest,
   looksLikeBookingRequest,
   normalizeText,
@@ -234,8 +238,18 @@ export async function processInboundMessage(tenantId, payload, metaAppSecret) {
     const parsed = parseStructuredIntent(aiResponse);
     if (parsed) {
       if (parsed?.intent === 'BOOK') {
-        bookingHandled = true;
-        replyText = await handleBookingIntent(ctx, tenant, parsed, fromPhone, text, availability);
+        const normalizedBooking = normalizeStructuredBookingIntent({
+          parsed,
+          text,
+          services,
+          timezone: tenant.timezone,
+          bookingContext,
+        });
+
+        if (normalizedBooking) {
+          bookingHandled = true;
+          replyText = await handleBookingIntent(ctx, tenant, normalizedBooking, fromPhone, text, availability);
+        }
       } else if (parsed?.intent === 'HANDOFF') {
         bookingHandled = true;
         replyText = await handleHandoffIntent(ctx, tenant, parsed, fromPhone);
@@ -284,7 +298,11 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage, 
     scheduledDate: scheduled_date,
     userMessage,
     timezone: tenant.timezone,
+    getLocalDateString,
+    addDaysToDateString,
   });
+
+  const customerName = sanitizeCustomerName(customer_name) ?? 'Cliente';
 
   try {
     const appointment = await bookAppointment({
@@ -293,7 +311,7 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage, 
       slot,
       scheduledDate: bookingDate,
       customerPhone: fromPhone,
-      customerName: customer_name ?? 'Cliente',
+      customerName,
       timeZone: tenant.timezone,
     });
 
@@ -310,8 +328,9 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage, 
     const confirmation =
       `Cita confirmada.\n\n` +
       `Servicio: ${service?.name}\n` +
-      `Fecha: ${dateStr}\n` +
-      `Nombre: ${customer_name ?? 'Cliente'}\n\n` +
+      `Fecha: ${dateStr}` +
+      (isMeaningfulCustomerName(customerName) ? `\nNombre: ${customerName}` : '') +
+      `\n\n` +
       `Te esperamos en ${tenant.businessName}.`;
 
     await sendWhatsAppMessage(tenant, fromPhone, confirmation);
@@ -323,13 +342,18 @@ async function handleBookingIntent(ctx, tenant, parsed, fromPhone, userMessage, 
     if (err.name === 'SlotUnavailableError') {
       const unavailMsg = buildUnavailableSlotMessage({
         tenant,
-        userMessage,
         availability,
         requestedDate: bookingDate,
         requestedTime: slot,
       });
       await sendWhatsAppMessage(tenant, fromPhone, unavailMsg);
       return unavailMsg;
+    }
+
+    if (err.name === 'PastDateError') {
+      const errMsg = 'Ese horario ya pasó. Si quieres, dime otra hora de hoy o te propongo opciones disponibles.';
+      await sendWhatsAppMessage(tenant, fromPhone, errMsg);
+      return errMsg;
     }
 
     const errMsg = 'Hubo un problema al agendar tu cita. ¿Quieres que te proponga otro horario disponible?';
@@ -349,6 +373,7 @@ async function handleHandoffIntent(ctx, tenant, parsed, fromPhone) {
 }
 
 async function handleCancellationIntent(ctx, tenant, fromPhone, userMessage) {
+  const normalized = normalizeText(userMessage);
   const futureAppointments = await prisma.appointment.findMany({
     where: {
       tenantId: tenant.id,
@@ -366,8 +391,40 @@ async function handleCancellationIntent(ctx, tenant, fromPhone, userMessage) {
     return noAppointmentMsg;
   }
 
-  const requestedMatch = pickMatchingAppointment(futureAppointments, userMessage, tenant.timezone);
-  const appointment = requestedMatch ?? futureAppointments[0];
+  if (normalized.includes('cancela todo') || normalized.includes('cancelar todo')) {
+    await Promise.all(
+      futureAppointments.map((appointment) =>
+        updateAppointmentStatus(tenant.id, appointment.id, 'CANCELLED', 'Cancelada por WhatsApp')
+      )
+    );
+
+    const reply = futureAppointments.length === 1
+      ? 'Listo, cancelé tu cita pendiente. Si luego quieres reagendar, te ayudo con gusto.'
+      : `Listo, cancelé tus ${futureAppointments.length} citas pendientes. Si luego quieres reagendar alguna, te ayudo con gusto.`;
+    await sendWhatsAppMessage(tenant, fromPhone, reply);
+    return reply;
+  }
+
+  const selection = selectAppointmentForMessage(futureAppointments, userMessage, tenant.timezone);
+  if (selection.matches.length > 1) {
+    const askWhich = 'Encontré más de una cita que coincide. Dime por favor la fecha u hora exacta de la que quieres cancelar.';
+    await sendWhatsAppMessage(tenant, fromPhone, askWhich);
+    return askWhich;
+  }
+
+  if (selection.hasExplicitFilter && !selection.match) {
+    const notFound = 'No encontré una cita futura que coincida con esa fecha u hora. Si quieres, dime el día exacto y la revisamos juntos.';
+    await sendWhatsAppMessage(tenant, fromPhone, notFound);
+    return notFound;
+  }
+
+  if (!selection.match && futureAppointments.length > 1) {
+    const askWhich = 'Tienes más de una cita activa. Dime por favor la fecha u hora exacta de la que quieres cancelar.';
+    await sendWhatsAppMessage(tenant, fromPhone, askWhich);
+    return askWhich;
+  }
+
+  const appointment = selection.match ?? futureAppointments[0];
 
   await updateAppointmentStatus(tenant.id, appointment.id, 'CANCELLED', 'Cancelada por WhatsApp');
 
@@ -404,8 +461,26 @@ async function handleRescheduleIntent(ctx, tenant, fromPhone, userMessage) {
     return noAppointmentMsg;
   }
 
-  const requestedMatch = pickMatchingAppointment(futureAppointments, userMessage, tenant.timezone);
-  const appointment = requestedMatch ?? futureAppointments[0];
+  const selection = selectAppointmentForMessage(futureAppointments, userMessage, tenant.timezone);
+  if (selection.matches.length > 1) {
+    const askWhich = 'Encontré más de una cita que coincide. Dime por favor la fecha u hora exacta de la que quieres mover.';
+    await sendWhatsAppMessage(tenant, fromPhone, askWhich);
+    return askWhich;
+  }
+
+  if (selection.hasExplicitFilter && !selection.match) {
+    const notFound = 'No encontré una cita futura que coincida con esa fecha u hora. Si quieres, dime el día exacto y la revisamos juntos.';
+    await sendWhatsAppMessage(tenant, fromPhone, notFound);
+    return notFound;
+  }
+
+  if (!selection.match && futureAppointments.length > 1) {
+    const askWhich = 'Tienes más de una cita activa. Dime por favor la fecha u hora exacta de la que quieres mover.';
+    await sendWhatsAppMessage(tenant, fromPhone, askWhich);
+    return askWhich;
+  }
+
+  const appointment = selection.match ?? futureAppointments[0];
   const targetDateTime = resolveRescheduleDateTime(userMessage, tenant.timezone, appointment);
 
   if (!targetDateTime) {
@@ -564,69 +639,65 @@ function getTimeZoneOffsetMs(date, timeZone) {
   return asUtc - date.getTime();
 }
 
-function pickMatchingAppointment(appointments, userMessage, timeZone) {
-  const text = (userMessage ?? '').toLowerCase();
+function selectAppointmentForMessage(appointments, userMessage, timeZone) {
+  const text = userMessage ?? '';
+  const normalized = normalizeText(text);
   const requestedDate = extractRequestedDate(text, timeZone, getLocalDateString, addDaysToDateString);
   const requestedTime = extractRequestedTime(text);
+  const hasExplicitFilter = Boolean(requestedDate || requestedTime);
 
-  return appointments.find((appointment) => {
+  const matches = appointments.filter((appointment) => {
     const appointmentDate = getLocalDateString(new Date(appointment.scheduledAt), timeZone);
     if (requestedDate && appointmentDate !== requestedDate) return false;
 
-    if (!requestedTime) return true;
-    const appointmentTime = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).format(new Date(appointment.scheduledAt));
-    return appointmentTime === requestedTime;
+    if (requestedTime) {
+      const appointmentTime = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(new Date(appointment.scheduledAt));
+
+      if (appointmentTime !== requestedTime) return false;
+    }
+
+    return true;
   });
+
+  return {
+    hasExplicitFilter,
+    matches,
+    match: matches.length === 1 ? matches[0] : null,
+  };
 }
 
 export function resolveDirectBookingIntent({ text, services, availability, timezone, bookingContext }) {
-  const normalized = normalizeText(text);
-  const service = findMatchingService(normalized, services) ?? bookingContext?.service ?? null;
-  const slot = extractRequestedTime(text) ?? bookingContext?.time ?? null;
-  const explicitDate = extractRequestedDate(text, timezone, getLocalDateString, addDaysToDateString);
-  const scheduled_date = explicitDate
-    ?? bookingContext?.date
-    ?? resolveBookingDate({
-      userMessage: text,
-      timezone,
-      getLocalDateString,
-      addDaysToDateString,
-    });
+  const signals = inferBookingSignals({ text, services, timezone, bookingContext });
+  if (!signals.allowBooking) return null;
+  if (!signals.service || !signals.slot) return null;
 
-  if (!service || !slot) return null;
-  if (!looksLikeBookingRequest(normalized) && !bookingContext) return null;
-
-  const dayAvailability = availability.find((day) => day.date === scheduled_date);
-  if (dayAvailability && !dayAvailability.slots.includes(slot)) {
+  const dayAvailability = availability.find((day) => day.date === signals.scheduledDate);
+  if (dayAvailability && !dayAvailability.slots.includes(signals.slot)) {
     return null;
   }
+  if (!signals.scheduledDate) return null;
 
   return {
     intent: 'BOOK',
-    service_id: service.id,
-    scheduled_date,
-    slot,
+    service_id: signals.service.id,
+    scheduled_date: signals.scheduledDate,
+    slot: signals.slot,
     customer_name: extractCustomerName(text),
   };
 }
 
 export function buildBookingClarification({ text, services, availability, timezone, bookingContext }) {
-  const normalized = normalizeText(text);
-  if (!looksLikeBookingRequest(normalized)) return null;
+  const signals = inferBookingSignals({ text, services, timezone, bookingContext });
+  if (!signals.allowBooking) return null;
 
-  const requestedDate = extractRequestedDate(
-    normalized,
-    timezone,
-    getLocalDateString,
-    addDaysToDateString
-  ) ?? bookingContext?.date ?? null;
-  const requestedTime = extractRequestedTime(text) ?? bookingContext?.time ?? null;
-  const service = findMatchingService(normalized, services) ?? bookingContext?.service ?? null;
+  const requestedDate = signals.scheduledDate;
+  const requestedTime = signals.slot;
+  const service = signals.service;
 
   if (requestedTime) {
     if (requestedDate) {
@@ -657,6 +728,66 @@ export function buildBookingClarification({ text, services, availability, timezo
   }
 
   return 'Claro, te ayudo a agendar. ¿Qué servicio necesitas y a qué hora te queda mejor?';
+}
+
+function inferBookingSignals({ text, services, timezone, bookingContext }) {
+  const normalized = normalizeText(text);
+  const explicitService = findMatchingService(normalized, services);
+  const explicitDate = extractRequestedDate(text, timezone, getLocalDateString, addDaysToDateString);
+  const explicitTime = extractRequestedTime(text);
+  const hasContext = Boolean(bookingContext?.active && (bookingContext?.service || bookingContext?.date || bookingContext?.time));
+  const continuation = hasContext && isBookingContinuation(text);
+  const directBookingSignal =
+    looksLikeBookingRequest(normalized)
+    || Boolean(explicitService)
+    || Boolean(explicitDate)
+    || Boolean(explicitTime);
+
+  if (
+    isConversationResetRequest(text)
+    || isCasualAcknowledgement(text)
+    || isNegativeResponse(text)
+  ) {
+    return { allowBooking: false };
+  }
+
+  const allowBooking = directBookingSignal || continuation;
+  if (!allowBooking) {
+    return { allowBooking: false };
+  }
+
+  return {
+    allowBooking,
+    service: explicitService ?? bookingContext?.service ?? null,
+    slot: explicitTime ?? bookingContext?.time ?? null,
+    scheduledDate: explicitDate ?? bookingContext?.date ?? null,
+  };
+}
+
+function normalizeStructuredBookingIntent({ parsed, text, services, timezone, bookingContext }) {
+  const signals = inferBookingSignals({ text, services, timezone, bookingContext });
+  if (!signals.allowBooking || !signals.service) return null;
+
+  const expectedTime = signals.slot;
+  const expectedDate = signals.scheduledDate
+    ?? (typeof parsed?.scheduled_date === 'string' ? parsed.scheduled_date.trim() : '')
+    ?? null;
+  const parsedSlot = typeof parsed?.slot === 'string' ? parsed.slot.trim() : '';
+  const parsedDate = typeof parsed?.scheduled_date === 'string' ? parsed.scheduled_date.trim() : '';
+
+  if (expectedTime && parsedSlot && parsedSlot !== expectedTime) return null;
+  if (expectedDate && parsedDate && parsedDate !== expectedDate) return null;
+
+  const slot = expectedTime ?? parsedSlot;
+  if (!slot || !expectedDate) return null;
+
+  return {
+    intent: 'BOOK',
+    service_id: signals.service.id,
+    scheduled_date: expectedDate,
+    slot,
+    customer_name: extractCustomerName(text) ?? sanitizeCustomerName(parsed?.customer_name),
+  };
 }
 
 function previewAvailability(slots, requestedTime = null) {
@@ -700,21 +831,50 @@ function timeStringToMinutes(time) {
   return (hours * 60) + minutes;
 }
 
-function extractCustomerName(text) {
+export function extractCustomerName(text) {
   const source = (text ?? '').trim();
   const patterns = [
-    /(?:me llamo|soy|mi nombre es)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\- ]{2,40})/i,
-    /(?:para|nombre)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\- ]{2,40})/i,
+    /(?:me llamo|mi nombre es|soy|a nombre de|nombre:)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ'\- ]{2,40})/i,
   ];
 
   for (const pattern of patterns) {
     const match = source.match(pattern);
     if (match?.[1]) {
-      return match[1].trim().replace(/\s+/g, ' ');
+      return sanitizeCustomerName(match[1]);
     }
   }
 
-  return 'Cliente';
+  return null;
+}
+
+function sanitizeCustomerName(name) {
+  const candidate = String(name ?? '').trim().replace(/\s+/g, ' ');
+  if (!candidate) return null;
+  if (/\d/.test(candidate)) return null;
+
+  const normalized = normalizeText(candidate);
+  const bannedFragments = [
+    'cliente',
+    'hoy',
+    'manana',
+    'pasado manana',
+    'a las',
+    'cita',
+    'corte',
+    'quiero',
+    'agendar',
+    'normal',
+  ];
+
+  if (bannedFragments.some((fragment) => normalized.includes(fragment))) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function isMeaningfulCustomerName(name) {
+  return Boolean(sanitizeCustomerName(name));
 }
 
 function parseStructuredIntent(aiResponse) {

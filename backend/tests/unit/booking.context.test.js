@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { buildBookingClarification, resolveDirectBookingIntent } from '../../src/modules/webhook/webhook.service.js';
+import { buildBookingClarification, extractCustomerName, resolveDirectBookingIntent } from '../../src/modules/webhook/webhook.service.js';
 import { inferBookingContext } from '../../src/modules/webhook/booking.context.js';
 
 describe('booking continuity', () => {
@@ -68,5 +68,29 @@ describe('booking continuity', () => {
       scheduled_date: '2026-06-13',
       slot: '10:00',
     });
+  });
+
+  it('does not book from casual messages even if old booking context exists', () => {
+    const context = inferBookingContext([
+      { role: 'assistant', content: 'Perfecto, para Corte de cabello mañana. ¿Qué hora te gustaría?' },
+      { role: 'user', content: 'Quiero agendar un corte mañana' },
+    ], services, tenantTimeZone);
+
+    const booking = resolveDirectBookingIntent({
+      text: 'jajajaja',
+      services,
+      availability: [
+        { date: '2026-06-13', label: 'sábado 13 de junio', slots: ['10:00', '11:00', '15:00'] },
+      ],
+      timezone: tenantTimeZone,
+      bookingContext: context,
+    });
+
+    expect(booking).toBeNull();
+  });
+
+  it('does not invent names from booking phrases', () => {
+    expect(extractCustomerName('Quiero agendar una cita para hoy a las 10')).toBeNull();
+    expect(extractCustomerName('Mi nombre es Andrea')).toBe('Andrea');
   });
 });

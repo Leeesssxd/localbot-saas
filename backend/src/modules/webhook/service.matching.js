@@ -18,6 +18,8 @@ export function findMatchingService(normalizedText, services) {
     let score = 0;
     if (name && normalizedText.includes(name)) score += 100;
     if (description && normalizedText.includes(description)) score += 25;
+    if (textTokens.has('corte') && name.includes('corte') && !name.includes('infantil')) score += 8;
+    if ((name.includes('infantil') || description.includes('infantil')) && !textTokens.has('infantil')) score -= 6;
 
     let overlap = 0;
     for (const token of serviceTokens) {
