@@ -10,10 +10,16 @@ function required(name) {
   return value;
 }
 
+function looksLikeDatabasePasswordPlaceholder(value) {
+  return /\[YOUR-PASSWORD\]|TU_PASSWORD_PRISMA|REPLACE_WITH_DATABASE_PASSWORD/i.test(value);
+}
+
 function requiredDatabaseUrl(name) {
   const value = required(name);
-  if (/TU_PASSWORD_PRISMA|REPLACE_WITH/i.test(value)) {
-    throw new Error(`Missing real database password in ${name}. Replace the placeholder value from backend/.env.`);
+  if (looksLikeDatabasePasswordPlaceholder(value)) {
+    throw new Error(
+      `Missing real database password in ${name}. Replace the placeholder in your environment with the real Supabase password before starting the app.`
+    );
   }
   return value;
 }

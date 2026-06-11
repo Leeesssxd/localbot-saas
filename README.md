@@ -82,7 +82,7 @@ Login credentials (from seed):
 3. Set root directory to `backend`
 4. Set Dockerfile path to `backend/Dockerfile`
 5. Add environment variables (copy from `.env.example`)
-6. Point `DATABASE_URL` to your Supabase Session pooler URI
+6. Point `DATABASE_URL` to your Supabase Session pooler URI and replace `[YOUR-PASSWORD]` with the real database password from Supabase
 7. After first deploy, run the EXCLUDE constraint SQL in your database
 
 ### Frontend → Vercel
